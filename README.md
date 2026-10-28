@@ -129,16 +129,27 @@ build/MasterLens_artefacts/Release/Standalone/MasterLens.app
 
 ## 4. 发布到 GitHub
 
-仓库已初始化（`main` 分支），发布一条命令即可（token 只走环境变量，不写入 `.git/config`）：
+仓库：<https://github.com/ANTHNYLN/MasterLens>  
+Release：<https://github.com/ANTHNYLN/MasterLens/releases/tag/v1.0.0>（DMG 作为附件）
+
+本机已配置 SSH 密钥（`~/.ssh/id_ed25519`，已绑定到 GitHub 账户），远端使用：
 
 ```bash
-GH_TOKEN=ghp_xxxxxxxx ./scripts/publish_to_github.sh MasterLens public
+git remote -v
+# origin  git@github.com:ANTHNYLN/MasterLens.git (fetch)
+# origin  git@github.com:ANTHNYLN/MasterLens.git (push)
 ```
 
-脚本会：校验 token → 创建仓库（已存在则复用）→ 推送 `main` → 创建 `v1.0.0` Release →
-上传 `dist/MasterLens-1.0.0-macOS.dmg` 作为 Release 附件。
+两种发布方式（token 只走环境变量 / gh 密钥链，不写入 `.git/config`）：
 
-Token 权限：classic 需 `repo`；fine-grained 需 `Contents: read/write` + `Administration: read/write`。
+```bash
+# A. 已登录 gh（推荐，自动建仓库 + Release + 上传 DMG）
+.tools/gh-bin/gh auth login --hostname github.com --git-protocol ssh --web
+./scripts/publish_with_gh.sh MasterLens --public
+
+# B. 使用 PAT
+GH_TOKEN=ghp_xxxxxxxx ./scripts/publish_to_github.sh MasterLens public
+```
 
 ---
 
@@ -201,7 +212,8 @@ Tests/DspTest.cpp           离线自检（16 项断言 + CPU 基准）
 Tools/UiShot.cpp            离屏渲染截图工具（无屏幕录制权限时验证界面）
 packaging/                  DMG 内的安装 / 卸载脚本与说明
 scripts/make_dmg.sh         通用二进制构建 + 签名 + DMG 打包
-scripts/publish_to_github.sh 创建仓库 / 推送 / 发布 Release 并上传 DMG
+scripts/publish_to_github.sh  PAT 方式：创建仓库 / 推送 / 发布 Release 并上传 DMG
+scripts/publish_with_gh.sh     gh 登录后一键完成建仓库 / 推送 / Release
 ```
 
 ---
