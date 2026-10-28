@@ -3,9 +3,25 @@
 **母带响度检查 · 混音质量诊断 · 实时频谱**  
 macOS 音频总线插件（VST3 / AU / 独立版），C++17 + JUCE 8。
 
+*Bilingual (中文 / English) mastering loudness meter and mix-quality inspector for macOS — VST3, AU and standalone, built with C++17 and JUCE 8. Zero latency, zero colouring: it only measures.*
+
 ![MasterLens 界面](docs/screenshot.png)
 
 插件**不处理任何音频**（零延迟、零染色），只做测量与诊断，插在总线 / 母带链最后一级即可。
+
+---
+
+## English summary
+
+- **Loudness (ITU-R BS.1770-4 / EBU R128)**: integrated with absolute + relative gating, momentary, short-term, LRA (EBU Tech 3342), PLR, and 4× oversampled true peak.
+- **Mix diagnostics**: sample clipping, inter-sample overs, click/edit points, DC offset (4 s true mean), channel correlation, stereo width, mono-ness below 120 Hz, and a 10-band tonal balance referenced to pink-noise-per-octave energy — reported as concrete problems (mud, harshness, sibilance, missing air, sub excess, low-mid hole, bright/dark tilt, spectral holes) with bilingual explanations and fixes.
+- **Visuals**: 4096-point FFT spectrum at 60 fps on a log axis with peak hold, 3-minute short-term loudness history with target band, correlation/width/low-end meters.
+- **UI**: light card layout, resizable, switch between Chinese and English with one click (stored in plug-in state), exportable text report.
+- **Verified**: `auval` passes, 17 offline DSP assertions pass (incl. −23.00 LUFS R128 calibration point), ~0.2 % of one core at 48 kHz stereo.
+- **Install**: open the DMG, run `安装 Install.command`, restart the DAW, insert on the master bus.
+
+Build: `./scripts/make_dmg.sh` (universal binary, ad-hoc signed).
+
 
 ---
 
