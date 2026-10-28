@@ -1,5 +1,7 @@
 #include "Theme.h"
 
+#include <map>
+
 namespace ml
 {
 juce::String typefaceName()
@@ -20,28 +22,65 @@ juce::String typefaceName()
     return name;
 }
 
+static const juce::StringArray& allTypefaceNames()
+{
+    static const juce::StringArray names = juce::Font::findAllTypefaceNames();
+    return names;
+}
+
+static std::map<int, juce::Font>& fontCache (bool bold)
+{
+    // Deliberately leaked: destroying juce::Font objects after JUCE's own
+    // static font machinery has been torn down crashes on exit / plug-in unload.
+    static auto* caches = new std::map<int, juce::Font>[2];
+    return caches[bold ? 1 : 0];
+}
+
 juce::Font uiFont (float height, bool bold)
 {
-    return juce::Font (juce::FontOptions (typefaceName(), height,
-                                          bold ? juce::Font::bold : juce::Font::plain)
-                           .withFallbacks ({ "PingFang SC", "Hiragino Sans GB", "Arial Unicode MS" }));
+    auto& cache = fontCache (bold);
+
+    const int key = juce::roundToInt (height * 10.0f);
+    const auto it = cache.find (key);
+
+    if (it != cache.end())
+        return it->second;
+
+    juce::Font font (juce::FontOptions (typefaceName(), height * 1.12f,
+                                        bold ? juce::Font::bold : juce::Font::plain)
+                         .withFallbacks ({ "PingFang SC", "Hiragino Sans GB", "Arial Unicode MS" }));
+
+    cache.emplace (key, font);
+    return font;
 }
 
 juce::Font monoFont (float height, bool bold)
 {
-    const auto all = juce::Font::findAllTypefaceNames();
-    juce::String name = "Menlo";
+    auto& cache = fontCache (bold);
 
-    for (const auto* candidate : { "SF Mono", "Menlo", "Monaco" })
-        if (all.contains (candidate))
-        {
-            name = candidate;
-            break;
-        }
+    const int key = juce::roundToInt (height * 10.0f) + 100000;
+    const auto it = cache.find (key);
 
-    return juce::Font (juce::FontOptions (name, height,
-                                          bold ? juce::Font::bold : juce::Font::plain)
-                           .withFallbacks ({ "PingFang SC", "Menlo", "Arial Unicode MS" }));
+    if (it != cache.end())
+        return it->second;
+
+    static const juce::String name = []
+    {
+        const auto& all = allTypefaceNames();
+
+        for (const auto* candidate : { "SF Mono", "Menlo", "Monaco" })
+            if (all.contains (candidate))
+                return juce::String (candidate);
+
+        return juce::String ("Menlo");
+    }();
+
+    juce::Font font (juce::FontOptions (name, height * 1.1f,
+                                        bold ? juce::Font::bold : juce::Font::plain)
+                         .withFallbacks ({ "PingFang SC", "Menlo", "Arial Unicode MS" }));
+
+    cache.emplace (key, font);
+    return font;
 }
 
 juce::Colour severityColour (Severity s)

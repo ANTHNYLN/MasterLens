@@ -6,7 +6,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CMAKE_BIN="$ROOT/.tools/cmake-4.4.5-macos-universal/CMake.app/Contents/bin/cmake"
 BUILD="${BUILD_DIR:-$ROOT/build-universal}"
 ARCHS="${ARCHS:-arm64;x86_64}"
-VERSION="1.0.0"
+VERSION="1.1.0"
 DIST="$ROOT/dist"
 STAGE="$DIST/stage"
 

@@ -17,7 +17,9 @@ public:
 
     void initialise (const juce::String& commandLine) override
     {
-        english = commandLine.trim().equalsIgnoreCase ("en");
+        english = commandLine.containsIgnoreCase ("en");
+        aboutShot = commandLine.containsIgnoreCase ("about");
+        expandedShot = commandLine.containsIgnoreCase ("expand");
 
         processor = std::make_unique<MasterLensAudioProcessor>();
         processor->setRateAndBufferSizeDetails (48000.0, 512);
@@ -29,6 +31,9 @@ public:
 
         editor = std::make_unique<MasterLensAudioProcessorEditor> (*processor);
         editor->setSize (1180, 760);
+
+        if (aboutShot)
+            editor->setAboutVisible (true);
 
         juce::Timer::callAfterDelay (2500, [this] { saveAndQuit(); });
     }
@@ -112,6 +117,9 @@ private:
 
     void saveAndQuit()
     {
+        if (expandedShot)
+            editor->expandFirstIssueForSnapshot();
+
         std::vector<float> curve;
         processor->copyShortTermCurve (curve, 1800);
 
@@ -139,7 +147,9 @@ private:
         const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 2.0f);
 
         const auto output = juce::File::getCurrentWorkingDirectory()
-                                .getChildFile (english ? "ui_shot_en.png" : "ui_shot.png");
+                                .getChildFile (aboutShot ? "ui_shot_about.png"
+                                              : expandedShot ? "ui_shot_expanded.png"
+                                              : (english ? "ui_shot_en.png" : "ui_shot.png"));
 
         juce::PNGImageFormat png;
 
@@ -152,6 +162,8 @@ private:
     std::unique_ptr<MasterLensAudioProcessor> processor;
     std::unique_ptr<MasterLensAudioProcessorEditor> editor;
     bool english = false;
+    bool aboutShot = false;
+    bool expandedShot = false;
 };
 
 START_JUCE_APPLICATION (UiShotApplication)

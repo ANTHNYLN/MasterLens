@@ -1,4 +1,5 @@
-MasterLens 1.0.0 —— 母带响度与混音质检（macOS · VST3 / AU / 独立版）
+MasterLens 1.1.0 —— 母带响度与混音质检（macOS · VST3 / AU / 独立版）
+开发者 KNGTNPT · 机构 BerryStudio
 =====================================================================
 
 【安装】
@@ -24,6 +25,7 @@ MasterLens 1.0.0 —— 母带响度与混音质检（macOS · VST3 / AU / 独�
     能量），并给出问题描述与处理建议。
   · 短时响度历史：最近 3 分钟，带目标区间。
   · 导出报告：header 右上角「导出报告 / Export」，输出文本报告到桌面。
+  · 关于：右上角「关于 / About」查看版本、开发者 KNGTNPT、机构 BerryStudio。
   · 语言：右上角「EN / 中文」一键切换中英文界面与报告。
 
 【常用目标】
@@ -38,5 +40,6 @@ MasterLens 1.0.0 —— 母带响度与混音质检（macOS · VST3 / AU / 独�
 
 【说明】
   · 本构建为通用二进制（Apple Silicon + Intel），最低 macOS 11。
+  · 1.1 版本：字号更大、诊断列表可展开 / 收起、频谱渲染性能提升约 5 倍。
   · 采用 ad-hoc 签名（未做 Apple 公证）。若 DAW 拒绝加载，可执行：
         xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/MasterLens.vst3

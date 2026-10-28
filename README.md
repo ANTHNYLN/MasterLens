@@ -15,12 +15,22 @@ macOS 音频总线插件（VST3 / AU / 独立版），C++17 + JUCE 8。
 
 - **Loudness (ITU-R BS.1770-4 / EBU R128)**: integrated with absolute + relative gating, momentary, short-term, LRA (EBU Tech 3342), PLR, and 4× oversampled true peak.
 - **Mix diagnostics**: sample clipping, inter-sample overs, click/edit points, DC offset (4 s true mean), channel correlation, stereo width, mono-ness below 120 Hz, and a 10-band tonal balance referenced to pink-noise-per-octave energy — reported as concrete problems (mud, harshness, sibilance, missing air, sub excess, low-mid hole, bright/dark tilt, spectral holes) with bilingual explanations and fixes.
-- **Visuals**: 4096-point FFT spectrum at 60 fps on a log axis with peak hold, 3-minute short-term loudness history with target band, correlation/width/low-end meters.
+- **Visuals**: 4096-point FFT spectrum at 30 fps on a log axis with peak hold, 3-minute short-term loudness history with target band, correlation/width/low-end meters.
 - **UI**: light card layout, resizable, switch between Chinese and English with one click (stored in plug-in state), exportable text report.
 - **Verified**: `auval` passes, 17 offline DSP assertions pass (incl. −23.00 LUFS R128 calibration point), ~0.2 % of one core at 48 kHz stereo.
 - **Install**: open the DMG, run `安装 Install.command`, restart the DAW, insert on the master bus.
 
 Build: `./scripts/make_dmg.sh` (universal binary, ad-hoc signed).
+
+---
+
+## 1.1 更新
+
+- **界面更清爽、字号更大**：全局字号 +12%，头部改为两行——第一行是预设 / 关于 / 中英切换，第二行是目标响度 / 真峰值上限 / 重置 / 冻结 / 导出；窗口最小宽度 1120，卡片留白更均匀。
+- **诊断改为可展开列表**：默认每个问题一行（标题 + 严重度 + 时间），点行首箭头或整行即可展开处理建议（手风琴），再次点击收起；实时结论仍随音频即时更新。
+- **性能大幅优化**：定位到 `monoFont()` 每帧调用 `Font::findAllTypefaceNames()`（触发 CoreText 字体枚举 + XPC）是卡顿主因。修复后同一窗口 CPU 从 **54% 降至 ~11%**；同时把网格/坐标轴缓存为离屏位图、动态视图设为 opaque、频谱 30 fps / 历史 10 fps 分层刷新。
+- **关于面板**：新增「关于 / About」，显示版本、开发者 **KNGTNPT**、机构 **BerryStudio**、测量标准与构建信息；版本号同步出现在标题栏与导出报告尾部。
+- 版本号 **1.1.0**。
 
 
 ---
@@ -48,7 +58,7 @@ Build: `./scripts/make_dmg.sh` (universal binary, ad-hoc signed).
 - 通过项同样列出（未检出削波、单声道兼容性良好、动态范围健康、频段平衡正常）
 
 ### 可视化
-- 实时频谱：4096 点 FFT、**60 fps**、对数频率轴、峰值保持、逐像素最大值合成 + 轻度平滑
+- 实时频谱：4096 点 FFT、**30 fps**、对数频率轴、峰值保持、逐像素最大值合成 + 轻度平滑
 - 短时响度历史：最近 3 分钟，带目标区间与目标线
 - M / S 电平条、相关性 / 宽度 / 低频单声道仪表、失真事件计数
 - 一键导出文本分析报告（含全部测量值、频段偏差与诊断结论）
@@ -62,6 +72,10 @@ Build: `./scripts/make_dmg.sh` (universal binary, ad-hoc signed).
 | 中文 | English |
 | --- | --- |
 | ![中文界面](docs/screenshot.png) | ![English UI](docs/screenshot-en.png) |
+
+| 展开的诊断建议 | 关于面板 |
+| --- | --- |
+| ![expanded](docs/screenshot-expanded.png) | ![about](docs/screenshot-about.png) |
 
 ---
 
@@ -197,7 +211,7 @@ auval -v aufx Maln OrcA
 CMakeLists.txt              JUCE 插件 / 自检 / 截图工具三个目标
 Source/
   PluginProcessor.*         参数（目标响度、真峰值上限、频谱平滑）、总线、状态
-  PluginEditor.*            界面布局、60 fps 定时器、预设、报告导出
+  PluginEditor.*            界面布局、30 fps 定时器、预设、报告导出
   Text.h                    UTF-8 字面量辅助（JUCE 的 const char* 构造按 ASCII 解析）
   dsp/
     AnalysisEngine.*        K 加权、门限直方图、LRA、真峰值、相关性、宽度、DC、爆音

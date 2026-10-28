@@ -177,7 +177,7 @@ void LevelBars::paintBar (juce::Graphics& g, juce::Rectangle<int> area, const ju
 
     g.setColour (theme::textDim);
     g.setFont (uiFont (11.0f));
-    g.drawText (label, row.removeFromLeft (54), juce::Justification::centredLeft);
+    g.drawText (label, row.removeFromLeft (86), juce::Justification::centredLeft);
 
     auto valueArea = row.removeFromRight (56);
 

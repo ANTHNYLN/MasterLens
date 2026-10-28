@@ -1,6 +1,8 @@
 #include "PluginEditor.h"
+#include "Version.h"
 
 using ml::T;
+using ml::fmt1;
 
 namespace
 {
@@ -132,6 +134,13 @@ MasterLensAudioProcessorEditor::MasterLensAudioProcessorEditor (MasterLensAudioP
     };
     addAndMakeVisible (languageButton);
 
+    aboutButton.onClick = [this] { aboutPanel.setVisibleAndFocus (! aboutPanel.isVisible()); };
+    addAndMakeVisible (aboutButton);
+
+    aboutPanel.onClose = [this] { aboutPanel.setVisibleAndFocus (false); };
+    addChildComponent (aboutPanel);
+    aboutPanel.setVisible (false);
+
     {
         const int storedLanguage = (int) processor.apvts.state.getProperty ("language", 0);
         ml::Localisation::set (storedLanguage == 1 ? ml::Language::english : ml::Language::chinese);
@@ -151,7 +160,7 @@ MasterLensAudioProcessorEditor::MasterLensAudioProcessorEditor (MasterLensAudioP
     analyzerSampleRate = processor.getSampleRateValue();
     analyzer.prepare (analyzerSampleRate, 12);
 
-    startTimerHz (60);
+    startTimerHz (30);
 }
 
 MasterLensAudioProcessorEditor::~MasterLensAudioProcessorEditor()
@@ -166,7 +175,7 @@ void MasterLensAudioProcessorEditor::updateTexts()
     const bool en = ml::Localisation::isEnglish();
 
     spectrumCard.setTitle (T ("实时频谱", "Real-time spectrum"));
-    spectrumCard.setSubtitle (T ("FFT 4096 · 60 fps · 对数频率", "FFT 4096 · 60 fps · log scale"));
+    spectrumCard.setSubtitle (T ("FFT 4096 · 30 fps · 对数频率", "FFT 4096 · 30 fps · log scale"));
 
     loudnessCard.setTitle (T ("母带响度", "Mastering loudness"));
     loudnessCard.setSubtitle (T ("ITU-R BS.1770-4 · EBU R128", "ITU-R BS.1770-4 · EBU R128"));
@@ -182,7 +191,13 @@ void MasterLensAudioProcessorEditor::updateTexts()
     resetButton.setButtonText (T ("重置", "Reset"));
     freezeButton.setButtonText (frozen ? T ("恢复", "Resume") : T ("冻结", "Freeze"));
     exportButton.setButtonText (T ("导出报告", "Export"));
+    aboutButton.setButtonText (T ("关于", "About"));
     languageButton.setButtonText (en ? juce::String::fromUTF8 ("中文") : juce::String ("EN"));
+
+    spectrum.refreshLanguage();
+    bands.refreshLanguage();
+    historyGraph.refreshLanguage();
+    aboutPanel.repaint();
 
     targetCaption.setText (T ("目标响度 LUFS", "Target LUFS"), juce::dontSendNotification);
     ceilingCaption.setText (T ("真峰值上限 dBTP", "Ceiling dBTP"), juce::dontSendNotification);
@@ -210,7 +225,7 @@ void MasterLensAudioProcessorEditor::paint (juce::Graphics& g)
     g.setGradientFill (wash);
     g.fillRect (0, 0, getWidth(), 170);
 
-    auto header = getLocalBounds().reduced (16, 12).removeFromTop (48);
+    auto header = getLocalBounds().removeFromTop (62).reduced (16, 9);
     auto logo = header.removeFromLeft (44).toFloat();
 
     g.setGradientFill (juce::ColourGradient (ml::theme::accent, logo.getX(), logo.getY(),
@@ -228,58 +243,67 @@ void MasterLensAudioProcessorEditor::paint (juce::Graphics& g)
         barX += 8.0f;
     }
 
+    const int textX = (int) logo.getRight() + 14;
+
     g.setColour (ml::theme::text);
-    g.setFont (ml::uiFont (19.0f, true));
-    g.drawText ("MasterLens", (int) logo.getRight() + 12, header.getY() - 1, 240, 24,
+    g.setFont (ml::uiFont (19.5f, true));
+    g.drawText ("MasterLens", textX, header.getY() - 3, 240, 26, juce::Justification::centredLeft);
+
+    g.setColour (ml::theme::textFaint);
+    g.setFont (ml::uiFont (10.0f));
+    g.drawText ("v" + juce::String (ml::kVersion), textX + 152, header.getY() + 1, 90, 18,
                 juce::Justification::centredLeft);
 
     g.setColour (ml::theme::textDim);
     g.setFont (ml::uiFont (10.5f));
     g.drawText (T ("母带响度检查 · 混音质量诊断 · 实时频谱",
                    "Mastering loudness · mix diagnostics · real-time spectrum"),
-                (int) logo.getRight() + 12, header.getY() + 22, 340, 16,
-                juce::Justification::centredLeft);
+                textX, header.getY() + 23, 360, 17, juce::Justification::centredLeft);
 
     if (frozen)
     {
-        const auto pill = juce::Rectangle<int> ((int) logo.getRight() + 352, header.getY() + 22, 54, 17);
+        const auto pill = juce::Rectangle<int> (textX + 372, header.getY() + 23, 58, 18);
         g.setColour (ml::theme::warn.withAlpha (0.16f));
-        g.fillRoundedRectangle (pill.toFloat(), 8.0f);
+        g.fillRoundedRectangle (pill.toFloat(), 9.0f);
         g.setColour (ml::theme::warn);
         g.setFont (ml::uiFont (9.5f));
         g.drawText (T ("已冻结", "Frozen"), pill, juce::Justification::centred);
     }
+
+    g.setColour (ml::theme::border);
+    g.drawHorizontalLine (105, 16.0f, (float) getWidth() - 16.0f);
 }
 
 void MasterLensAudioProcessorEditor::resized()
 {
-    auto header = getLocalBounds().removeFromTop (72).reduced (16, 12);
-    auto controls = header;
+    auto bounds = getLocalBounds();
+    auto row1 = bounds.removeFromTop (62).reduced (16, 9);
+    auto row2 = bounds.removeFromTop (44).reduced (16, 5);
 
-    languageButton.setBounds (controls.removeFromRight (46).withSizeKeepingCentre (46, 30));
-    controls.removeFromRight (8);
-    exportButton.setBounds (controls.removeFromRight (84).withSizeKeepingCentre (84, 30));
-    controls.removeFromRight (8);
-    freezeButton.setBounds (controls.removeFromRight (68).withSizeKeepingCentre (68, 30));
-    controls.removeFromRight (8);
-    resetButton.setBounds (controls.removeFromRight (62).withSizeKeepingCentre (62, 30));
-    controls.removeFromRight (16);
+    languageButton.setBounds (row1.removeFromRight (46).withSizeKeepingCentre (46, 30));
+    row1.removeFromRight (8);
+    aboutButton.setBounds (row1.removeFromRight (58).withSizeKeepingCentre (58, 30));
+    row1.removeFromRight (8);
+    presetBox.setBounds (row1.removeFromRight (juce::jmin (206, row1.getWidth())).withSizeKeepingCentre (juce::jmin (206, row1.getWidth()), 30));
 
-    auto ceilingBlock = controls.removeFromRight (140);
-    controls.removeFromRight (12);
-    auto targetBlock = controls.removeFromRight (152);
-    controls.removeFromRight (12);
+    auto targetBlock = row2.removeFromLeft (232);
+    row2.removeFromLeft (18);
+    auto ceilingBlock = row2.removeFromLeft (216);
+    row2.removeFromLeft (16);
 
-    const int presetW = juce::jmin (170, juce::jmax (120, controls.getWidth()));
-    presetBox.setBounds (controls.removeFromRight (presetW).withSizeKeepingCentre (presetW, 30));
+    exportButton.setBounds (row2.removeFromRight (88).withSizeKeepingCentre (88, 30));
+    row2.removeFromRight (8);
+    freezeButton.setBounds (row2.removeFromRight (70).withSizeKeepingCentre (70, 30));
+    row2.removeFromRight (8);
+    resetButton.setBounds (row2.removeFromRight (66).withSizeKeepingCentre (66, 30));
 
-    ceilingCaption.setBounds (ceilingBlock.removeFromTop (16));
-    ceilingSlider.setBounds (ceilingBlock.removeFromTop (22));
-
-    targetCaption.setBounds (targetBlock.removeFromTop (16));
+    targetCaption.setBounds (targetBlock.removeFromTop (14));
     targetSlider.setBounds (targetBlock.removeFromTop (22));
 
-    auto content = getLocalBounds().reduced (16, 0).withTrimmedTop (66).withTrimmedBottom (14);
+    ceilingCaption.setBounds (ceilingBlock.removeFromTop (14));
+    ceilingSlider.setBounds (ceilingBlock.removeFromTop (22));
+
+    auto content = getLocalBounds().reduced (16, 0).withTrimmedTop (112).withTrimmedBottom (14);
 
     const int gap = 12;
     const int leftW = juce::roundToInt ((content.getWidth() - gap) * 0.585f);
@@ -303,6 +327,8 @@ void MasterLensAudioProcessorEditor::resized()
     right.removeFromTop (gap);
     metersCard.setBounds (right);
 
+    aboutPanel.setBounds (getLocalBounds());
+
     processor.apvts.state.setProperty ("editorWidth", getWidth(), nullptr);
     processor.apvts.state.setProperty ("editorHeight", getHeight(), nullptr);
 }
@@ -310,6 +336,8 @@ void MasterLensAudioProcessorEditor::resized()
 //==============================================================================
 void MasterLensAudioProcessorEditor::timerCallback()
 {
+    ++frameCounter;
+
     const double sr = processor.getSampleRateValue();
 
     if (std::abs (sr - analyzerSampleRate) > 0.5)
@@ -329,18 +357,42 @@ void MasterLensAudioProcessorEditor::timerCallback()
     const float target = processor.getTargetLufs();
     const float ceiling = processor.getCeilingDb();
 
-    advisor.update (stats, analyzer.getBandDeviations(), target, ceiling);
-    processor.copyShortTermCurve (curve, 1800);
-
     spectrum.repaint();
-    bands.setDeviations (analyzer.getBandDeviations());
-    tiles.setValues (stats, target, ceiling);
-    levelBars.setValues (stats, target);
-    historyGraph.setData (curve, target);
-    meters.setValues (stats);
-    issueList.setIssues (advisor.getIssues());
 
-    if (++frameCounter % 8 == 0)
+    // Expensive text/analysis work runs at half rate; the spectrum still refreshes
+    // at the full 30 fps.
+    if ((frameCounter % 2) == 0)
+    {
+        const auto& devs = analyzer.getBandDeviations();
+        bands.setDeviations (devs);
+
+        advisor.update (stats, devs, target, ceiling);
+        issueList.setIssues (advisor.getIssues());
+
+        if ((frameCounter % 6) == 0)
+        {
+            processor.copyShortTermCurve (curve, 1800);
+            historyGraph.setData (curve, target);
+        }
+    }
+
+    juce::String sig;
+    sig << fmt1 (stats.integrated) << '|' << fmt1 (stats.truePeakDb) << '|' << fmt1 (stats.lra)
+        << '|' << fmt1 (stats.getPlr()) << '|' << fmt1 (stats.momentary) << '|' << fmt1 (stats.shortTerm)
+        << '|' << fmt1 (stats.correlation) << '|' << fmt1 (stats.widthPct) << '|' << fmt1 (stats.lowSidePct)
+        << '|' << fmt1 (stats.dcOffsetDb)
+        << '|' << stats.clipEvents << '/' << stats.clickEvents << '/' << stats.oversCount;
+
+    if (sig != lastStatsSignature)
+    {
+        lastStatsSignature = sig;
+
+        tiles.setValues (stats, target, ceiling);
+        levelBars.setValues (stats, target);
+        meters.setValues (stats);
+    }
+
+    if ((frameCounter % 8) == 0)
     {
         juce::String sub;
 
@@ -364,6 +416,12 @@ void MasterLensAudioProcessorEditor::timerCallback()
         issuesCard.setSubtitle (sub);
         issuesCard.setAccent (ml::severityColour (advisor.getOverallSeverity()));
     }
+}
+
+//==============================================================================
+void MasterLensAudioProcessorEditor::expandFirstIssueForSnapshot()
+{
+    issueList.expandFirstForSnapshot();
 }
 
 //==============================================================================
@@ -530,6 +588,10 @@ juce::String MasterLensAudioProcessorEditor::buildReport() const
 
     r << T ("\n—— 由 MasterLens 生成（ITU-R BS.1770-4 / EBU R128 测量）\n",
            "\n-- Generated by MasterLens (ITU-R BS.1770-4 / EBU R128 measurement)\n");
+
+    r << T ("开发者 ", "Developer ") << ml::kDeveloper
+      << T (" · 机构 ", " · Organisation ") << ml::kOrganisation
+      << " · v" << ml::kVersion << "\n";
 
     return r;
 }

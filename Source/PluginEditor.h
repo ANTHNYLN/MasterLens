@@ -17,6 +17,10 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
+    /** Used by the offscreen snapshot tool. */
+    void setAboutVisible (bool shouldBeVisible) { aboutPanel.setVisibleAndFocus (shouldBeVisible); }
+    void expandFirstIssueForSnapshot();
+
 private:
     void timerCallback() override;
     void updateTexts();
@@ -34,7 +38,7 @@ private:
     juce::ComboBox presetBox;
     juce::Label targetCaption, ceilingCaption;
     juce::Slider targetSlider, ceilingSlider;
-    juce::TextButton resetButton, freezeButton, exportButton, languageButton;
+    juce::TextButton resetButton, freezeButton, exportButton, languageButton, aboutButton;
 
     // ---- cards --------------------------------------------------------------
     ml::Card spectrumCard, issuesCard, loudnessCard, historyCard, metersCard;
@@ -50,6 +54,7 @@ private:
 
     ml::SpectrumAnalyzer analyzer;
     ml::Advisor advisor;
+    ml::AboutPanel aboutPanel;
 
     std::vector<float> curve;
     ml::StatsSnapshot stats;
@@ -57,6 +62,7 @@ private:
     bool frozen = false;
     bool updatingPreset = false;
     int frameCounter = 0;
+    juce::String lastStatsSignature;
 
     std::unique_ptr<juce::FileChooser> fileChooser;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> targetAttachment, ceilingAttachment;
