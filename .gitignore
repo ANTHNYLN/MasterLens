@@ -1,0 +1,8 @@
+build/
+build-*/
+dist/
+.tools/
+*.log
+*_log.txt
+ui_shot*.png
+.DS_Store
