@@ -127,7 +127,22 @@ build/MasterLens_artefacts/Release/Standalone/MasterLens.app
 
 ---
 
-## 4. 安装（DMG）
+## 4. 发布到 GitHub
+
+仓库已初始化（`main` 分支），发布一条命令即可（token 只走环境变量，不写入 `.git/config`）：
+
+```bash
+GH_TOKEN=ghp_xxxxxxxx ./scripts/publish_to_github.sh MasterLens public
+```
+
+脚本会：校验 token → 创建仓库（已存在则复用）→ 推送 `main` → 创建 `v1.0.0` Release →
+上传 `dist/MasterLens-1.0.0-macOS.dmg` 作为 Release 附件。
+
+Token 权限：classic 需 `repo`；fine-grained 需 `Contents: read/write` + `Administration: read/write`。
+
+---
+
+## 5. 安装（DMG）
 
 1. 打开 DMG，双击「安装 Install.command」（右键 → 打开，可绕过 Gatekeeper 提示）。
 2. 脚本复制到：
@@ -140,7 +155,7 @@ build/MasterLens_artefacts/Release/Standalone/MasterLens.app
 
 ---
 
-## 5. 验证
+## 6. 验证
 
 ### DSP 自检
 
@@ -165,7 +180,7 @@ auval -v aufx Maln OrcA
 
 ---
 
-## 6. 工程结构
+## 7. 工程结构
 
 ```
 CMakeLists.txt              JUCE 插件 / 自检 / 截图工具三个目标
@@ -186,11 +201,12 @@ Tests/DspTest.cpp           离线自检（16 项断言 + CPU 基准）
 Tools/UiShot.cpp            离屏渲染截图工具（无屏幕录制权限时验证界面）
 packaging/                  DMG 内的安装 / 卸载脚本与说明
 scripts/make_dmg.sh         通用二进制构建 + 签名 + DMG 打包
+scripts/publish_to_github.sh 创建仓库 / 推送 / 发布 Release 并上传 DMG
 ```
 
 ---
 
-## 7. 已知限制
+## 8. 已知限制
 
 - ad-hoc 签名，未做 Apple 公证：首次安装可能需要「右键 → 打开」或 `xattr -dr com.apple.quarantine`。
 - 仅支持单声道 / 立体声总线（不做 5.1 / 7.1 声道权重）。
@@ -201,7 +217,7 @@ scripts/make_dmg.sh         通用二进制构建 + 签名 + DMG 打包
 
 ---
 
-## 8. 许可
+## 9. 许可
 
 JUCE 8.0.15 采用 AGPLv3 / 商业双许可；本项目源码按 AGPLv3 使用 JUCE。
 
