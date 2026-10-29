@@ -20,6 +20,20 @@ void Biquad::designLowPass (double sampleRate, double freq, double q) noexcept
     a2 = (1.0 - alpha) / a0;
 }
 
+void Biquad::designHighPass (double sampleRate, double freq, double q) noexcept
+{
+    const double w0 = 2.0 * kPi * freq / sampleRate;
+    const double cw = std::cos (w0);
+    const double alpha = std::sin (w0) / (2.0 * q);
+    const double a0 = 1.0 + alpha;
+
+    b0 = ((1.0 + cw) * 0.5) / a0;
+    b1 = -(1.0 + cw) / a0;
+    b2 = b0;
+    a1 = (-2.0 * cw) / a0;
+    a2 = (1.0 - alpha) / a0;
+}
+
 //==============================================================================
 void TruePeakDetector::prepare (double sampleRate)
 {
@@ -102,11 +116,17 @@ void AnalysisEngine::prepare (double sampleRate, int numChannels)
             f.setCoefficients (1.0, -2.0, 1.0, a1, a2);
     }
 
-    // --- 120 Hz Linkwitz-Riley low band for the mono-bass check --------------
+    // --- 3-band Linkwitz-Riley split for band correlation / mono checks ------
     for (int ch = 0; ch < 2; ++ch)
     {
-        lowPassA[ch].designLowPass (fs, 120.0, 0.7071067811865476);
-        lowPassB[ch].designLowPass (fs, 120.0, 0.7071067811865476);
+        lowPassA[ch].designLowPass (fs, 150.0, 0.7071067811865476);
+        lowPassB[ch].designLowPass (fs, 150.0, 0.7071067811865476);
+        hp150A[ch].designHighPass (fs, 150.0, 0.7071067811865476);
+        hp150B[ch].designHighPass (fs, 150.0, 0.7071067811865476);
+        lp2kA[ch].designLowPass (fs, 2000.0, 0.7071067811865476);
+        lp2kB[ch].designLowPass (fs, 2000.0, 0.7071067811865476);
+        hp2kA[ch].designHighPass (fs, 2000.0, 0.7071067811865476);
+        hp2kB[ch].designHighPass (fs, 2000.0, 0.7071067811865476);
     }
 
     truePeak[0].prepare (fs);
@@ -123,14 +143,31 @@ void AnalysisEngine::reset()
         kHighPass[ch].reset();
         lowPassA[ch].reset();
         lowPassB[ch].reset();
+        hp150A[ch].reset();
+        hp150B[ch].reset();
+        lp2kA[ch].reset();
+        lp2kB[ch].reset();
+        hp2kA[ch].reset();
+        hp2kB[ch].reset();
         truePeak[ch].reset();
     }
+
+    for (int b = 0; b < 3; ++b)
+        bandL2[b] = bandR2[b] = bandLR[b] = bandMid[b] = bandSide[b] = 0.0;
+
+    for (auto& p : peakRing)
+        p = 0.0;
+
+    peakRingPos = 0;
+    peakRingCount = 0;
+    lastSpikeSecond = -100.0;
+    lastTpEventTime = -100.0;
+    tpEventRing.reset();
 
     partialSamples = 0;
     sumWeightedK = 0.0;
     sumLR = sumL2 = sumR2 = 0.0;
     sumMid = sumSide = 0.0;
-    sumLowMid = sumLowSide = 0.0;
     partialMaxTruePeak = 0.0;
     partialMaxSamplePeak = 0.0;
     sumL = sumR = 0.0;
@@ -215,13 +252,33 @@ void AnalysisEngine::process (const juce::AudioBuffer<float>& buffer, Stats& sta
         sumMid  += mid * mid;
         sumSide += side * side;
 
-        // --- low band (<= 120 Hz) stereo image -------------------------------
+        // --- 3-band split: low (<150 Hz), mid (150 Hz - 2 kHz), high (>2 kHz)
         const float lowL = lowPassB[0].process (lowPassA[0].process (l));
         const float lowR = lowPassB[1].process (lowPassA[1].process (r));
-        const double lowMid  = 0.5 * ((double) lowL + (double) lowR);
-        const double lowSide = 0.5 * ((double) lowL - (double) lowR);
-        sumLowMid  += lowMid * lowMid;
-        sumLowSide += lowSide * lowSide;
+
+        const float bandHighPassL = hp150B[0].process (hp150A[0].process (l));
+        const float bandHighPassR = hp150B[1].process (hp150A[1].process (r));
+
+        const float midL = lp2kB[0].process (lp2kA[0].process (bandHighPassL));
+        const float midR = lp2kB[1].process (lp2kA[1].process (bandHighPassR));
+
+        const float highL = hp2kB[0].process (hp2kA[0].process (bandHighPassL));
+        const float highR = hp2kB[1].process (hp2kA[1].process (bandHighPassR));
+
+        const auto accumulateBand = [this] (int band, double l, double r)
+        {
+            const double m = 0.5 * (l + r);
+            const double s = 0.5 * (l - r);
+            bandL2[band] += l * l;
+            bandR2[band] += r * r;
+            bandLR[band] += l * r;
+            bandMid[band] += m * m;
+            bandSide[band] += s * s;
+        };
+
+        accumulateBand (0, lowL, lowR);
+        accumulateBand (1, midL, midR);
+        accumulateBand (2, highL, highR);
 
         // --- DC offset accumulators ------------------------------------------
         sumL += dl;
@@ -311,8 +368,28 @@ void AnalysisEngine::finishPartialBlock (Stats& stats)
 
     stats.widthPct = (float) juce::jlimit (0.0, 200.0,
                                            100.0 * std::sqrt (sumSide / juce::jmax (1.0e-20, sumMid)));
-    stats.lowSidePct = (float) juce::jlimit (0.0, 200.0,
-                                             100.0 * std::sqrt (sumLowSide / juce::jmax (1.0e-20, sumLowMid)));
+    {
+        const auto ratio = [] (double side, double mid)
+        {
+            return (float) juce::jlimit (0.0, 200.0, 100.0 * std::sqrt (side / juce::jmax (1.0e-20, mid)));
+        };
+
+        const auto corr = [] (double l2, double r2, double lr)
+        {
+            const double denom = std::sqrt (juce::jmax (1.0e-30, l2 * r2));
+            return denom > 1.0e-12 ? (float) juce::jlimit (-1.0, 1.0, lr / denom) : 0.0f;
+        };
+
+        stats.bandCorrLow  = corr (bandL2[0], bandR2[0], bandLR[0]);
+        stats.bandCorrMid  = corr (bandL2[1], bandR2[1], bandLR[1]);
+        stats.bandCorrHigh = corr (bandL2[2], bandR2[2], bandLR[2]);
+
+        stats.bandSideLow  = ratio (bandSide[0], bandMid[0]);
+        stats.bandSideMid  = ratio (bandSide[1], bandMid[1]);
+        stats.bandSideHigh = ratio (bandSide[2], bandMid[2]);
+
+        stats.lowSidePct = stats.bandSideLow.load();
+    }
     // true DC = mean of the last 4 s of 100 ms block means (a 2 Hz one-pole
     // leaks far too much bass and produces false positives on low-heavy music)
     {
@@ -345,10 +422,26 @@ void AnalysisEngine::finishPartialBlock (Stats& stats)
         const float tpDb = juce::Decibels::gainToDecibels ((float) partialMaxTruePeak, -100.0f);
 
         if (tpDb > stats.truePeakDb.load())
+        {
             stats.truePeakDb = tpDb;
+            stats.truePeakMaxTime = (float) stats.elapsed.load();
+        }
 
         if (partialMaxTruePeak > 1.0f)
+        {
             stats.oversCount.fetch_add (1);
+
+            TpEvent e;
+            e.time = stats.elapsed.load();
+            e.overshootDb = tpDb;              // dB above 0 dBTP (only the over-limit part)
+            e.overshootDb = juce::jmax (0.05f, e.overshootDb);
+
+            if (tpEventRing.size() == 0 || (e.time - lastTpEventTime) > 0.05)
+            {
+                tpEventRing.push (e);
+                lastTpEventTime = e.time;
+            }
+        }
     }
 
     if (partialMaxSamplePeak > 0.0)
@@ -357,6 +450,41 @@ void AnalysisEngine::finishPartialBlock (Stats& stats)
 
         if (spDb > stats.samplePeakDb.load())
             stats.samplePeakDb = spDb;
+    }
+
+    // --- PSR: 3 s sample peak vs short-term loudness -------------------------
+    {
+        peakRing[peakRingPos] = partialMaxSamplePeak;
+        peakRingPos = (peakRingPos + 1) % 30;
+
+        if (peakRingCount < 30)
+            ++peakRingCount;
+
+        double maxPeak = 0.0;
+
+        for (int i = 0; i < peakRingCount; ++i)
+            maxPeak = juce::jmax (maxPeak, peakRing[i]);
+
+        if (ringCount >= 30 && maxPeak > 0.0)
+        {
+            const float psr = juce::Decibels::gainToDecibels ((float) maxPeak, -100.0f) - sDb;
+            stats.psr = psr;
+
+            if (psr < stats.psrMin.load())
+            {
+                stats.psrMin = psr;
+                stats.psrMinTime = stats.elapsed.load();
+            }
+        }
+    }
+
+    // --- momentary loudness spikes -------------------------------------------
+    if (ringCount >= 30 && mDb > sDb + 6.0f
+        && (stats.elapsed.load() - lastSpikeSecond) > 1.0)
+    {
+        lastSpikeSecond = stats.elapsed.load();
+        stats.spikeCount.fetch_add (1);
+        stats.lastSpikeTime = lastSpikeSecond;
     }
 
     // --- gated histograms ----------------------------------------------------
@@ -385,7 +513,9 @@ void AnalysisEngine::finishPartialBlock (Stats& stats)
     sumWeightedK = 0.0;
     sumLR = sumL2 = sumR2 = 0.0;
     sumMid = sumSide = 0.0;
-    sumLowMid = sumLowSide = 0.0;
+    bandL2[0] = bandR2[0] = bandLR[0] = bandMid[0] = bandSide[0] = 0.0;
+    bandL2[1] = bandR2[1] = bandLR[1] = bandMid[1] = bandSide[1] = 0.0;
+    bandL2[2] = bandR2[2] = bandLR[2] = bandMid[2] = bandSide[2] = 0.0;
     sumL = sumR = 0.0;
     partialMaxTruePeak = 0.0;
     partialMaxSamplePeak = 0.0;

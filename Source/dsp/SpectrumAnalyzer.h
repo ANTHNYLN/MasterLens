@@ -1,6 +1,8 @@
 #pragma once
 
 #include <juce_dsp/juce_dsp.h>
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <vector>
 
@@ -74,10 +76,10 @@ class SpectrumAnalyzer
 public:
     static constexpr int numBands = 10;
 
-    void prepare (double sampleRate, int fftOrder = 12);
+    void prepare (double sampleRate, int fftOrder = 13);
     void reset();
 
-    /** Runs one analysis frame. Call from a 60 fps timer. */
+    /** Runs one analysis frame. Call from a 30 fps timer. */
     void update (const SpectrumRing& ring);
 
     void setSmoothing (float s) noexcept { smoothing = juce::jlimit (0.0f, 1.0f, s); }
@@ -88,28 +90,62 @@ public:
     double getBinHz() const noexcept { return binHz; }
     float getFramePeakDb() const noexcept { return framePeakDb; }
 
+    /** Interpolated magnitude in dB at an arbitrary frequency (log-domain look-up,
+        which removes the blocky "staircase" look at low frequencies). */
+    float getMagnitudeAt (double hz) const noexcept;
+
+    /** Energy share of the four QC bands: 20-250 Hz, 250 Hz-2 kHz, 2-8 kHz, 8-20 kHz (%). */
+    const std::array<float, 4>& getBandRatios() const noexcept { return bandRatios; }
+
+    struct Resonance
+    {
+        float freq = 0.0f;
+        float excessDb = 0.0f;
+    };
+
+    const std::vector<Resonance>& getResonances() const noexcept { return resonances; }
+
+    /** Long-term averaged spectrum (dB per bin), used for reference comparison. */
+    const std::vector<float>& getAverageSpectrumDb() const noexcept { return averageDb; }
+
+    /** Optional reference spectrum (dB per bin, same size as numBins). */
+    void setReferenceSpectrum (std::vector<float> refDb);
+    void clearReference();
+    bool hasReference() const noexcept { return referenceReady; }
+    float getReferenceDeviationAt (double hz) const noexcept;
+    const std::vector<float>& getReferenceDb() const noexcept { return referenceDb; }
+
     static const BandInfo& getBandInfo (int i) noexcept;
     const std::vector<float>& getBandDeviations() const noexcept { return deviations; }
 
 private:
     void computeBandDeviations();
+    void computeBandRatios();
+    void computeResonances();
+    void updateAverageSpectrum();
 
     std::unique_ptr<juce::dsp::FFT> fft;
 
-    int fftSize = 4096;
-    int numBins = 2049;
+    int fftSize = 8192;
+    int numBins = 4097;
     double sampleRate = 48000.0;
-    double binHz = 11.7;
+    double binHz = 5.86;
 
     std::vector<float> window;
     std::vector<float> fftData;
     std::vector<float> magnitudes;
     std::vector<float> peakHold;
     std::vector<float> longTermPower;
+    std::vector<float> averageDb;
     std::vector<float> scratch;
     std::vector<float> deviations;
+    std::vector<float> referenceDb;
+    std::array<float, 4> bandRatios { 0.0f, 0.0f, 0.0f, 0.0f };
+    std::vector<Resonance> resonances;
+    bool referenceReady = false;
 
     int averagedFrames = 0;
+    int resonanceFrameCounter = 0;
     float framePeakDb = kSilentDb;
     float smoothing = 0.55f;
 };

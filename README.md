@@ -24,6 +24,21 @@ Build: `./scripts/make_dmg.sh` (universal binary, ad-hoc signed).
 
 ---
 
+## 1.2 更新
+
+- **界面按功能菜单化**：左侧模块导航（响度 / 真峰值 / 频谱 / 立体声 / 平台交付 / 混音诊断 / 时间线），每项带状态灯与 1–2 个关键读数；右侧为主数据区，只显示当前模块的详情，底部是统一时间线标记条。
+- **字号与 DPI**：全局字号再上调，所有文字随窗口尺寸缩放；布局改为按比例 + 最小尺寸计算，任意横纵比缩放都不再错位。
+- **频谱“方波”修复**：FFT 由 4096 提升到 8192，绘制改为按 bin 对数插值（不再取最大值阶梯），低频曲线平滑。
+- **新增检查**：PSR（含最低点时间戳）、真峰值超限事件列表（时间 + 超出量）、三段分频相关性 / 侧向能量、四段能量占比、谐振检测（局部中值 +6 dB）、平台交付预测（Spotify / Apple / YouTube / Tidal / Podcast / Club，静态查表）、参考轨导入（1–4 条，Welch 平均）、TXT + JSON 报告导出。
+- 版本号 **1.2.0**。
+
+> Windows 安装包：本机为 macOS，交叉编译 Windows 需要 MSVC / MinGW 工具链。仓库已附带
+> `.github/workflows/build.yml`（Windows x64 + ARM64 两个矩阵任务，用 MSVC 构建并调用 NSIS
+> `packaging/installer.nsi` 生成安装包）以及 `packaging/installer.nsi`。推送 `v*` 标签即可在
+> GitHub Actions 上产出 `MasterLens-1.2.0-Windows-x64.exe` 与 `-arm64.exe`。
+
+---
+
 ## 1.1 更新
 
 - **界面更清爽、字号更大**：全局字号 +12%，头部改为两行——第一行是预设 / 关于 / 中英切换，第二行是目标响度 / 真峰值上限 / 重置 / 冻结 / 导出；窗口最小宽度 1120，卡片留白更均匀。

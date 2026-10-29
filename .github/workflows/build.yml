@@ -1,0 +1,91 @@
+name: Build MasterLens (macOS + Windows)
+
+on:
+  push:
+    tags: [ "v*" ]
+  workflow_dispatch:
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch JUCE 8.0.15
+        run: git clone --depth 1 --branch 8.0.15 https://github.com/juce-framework/JUCE.git .tools/JUCE
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+                -G "Unix Makefiles" -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+
+      - name: Build
+        run: cmake --build build --config Release --target MasterLens -j 4
+
+      - name: Package DMG
+        run: |
+          mkdir -p stage
+          cp -R build/MasterLens_artefacts/Release/VST3/MasterLens.vst3 stage/
+          cp -R build/MasterLens_artefacts/Release/AU/MasterLens.component stage/
+          cp -R build/MasterLens_artefacts/Release/Standalone/MasterLens.app stage/
+          cp packaging/Install.command "stage/安装 Install.command"
+          cp packaging/Uninstall.command "stage/卸载 Uninstall.command"
+          cp packaging/README-DMG.txt "stage/使用说明 README.txt"
+          chmod +x stage/*.command
+          codesign --force --deep -s - stage/MasterLens.vst3 || true
+          codesign --force --deep -s - stage/MasterLens.component || true
+          hdiutil create -volname "MasterLens 1.2.0" -srcfolder stage -fs HFS+ \
+                  -format UDZO -ov MasterLens-1.2.0-macOS.dmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MasterLens-macOS
+          path: MasterLens-1.2.0-macOS.dmg
+
+  windows:
+    strategy:
+      matrix:
+        include:
+          - arch: x64
+            cmakeArch: x64
+            runner: windows-latest
+          - arch: arm64
+            cmakeArch: ARM64
+            runner: windows-latest
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch JUCE 8.0.15
+        shell: bash
+        run: git clone --depth 1 --branch 8.0.15 https://github.com/juce-framework/JUCE.git .tools/JUCE
+
+      - name: Configure (MSVC)
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A ${{ matrix.cmakeArch }}
+
+      - name: Build VST3 + standalone
+        run: |
+          cmake --build build --config Release --target MasterLens_VST3 -j 4
+          cmake --build build --config Release --target MasterLens_Standalone -j 4
+
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $stage = "stage-${{ matrix.arch }}"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item -Recurse "build/MasterLens_artefacts/Release/VST3/MasterLens.vst3" $stage
+          Copy-Item -Recurse "build/MasterLens_artefacts/Release/Standalone/MasterLens.exe" $stage
+          Copy-Item "packaging/README-Windows.txt" $stage -ErrorAction SilentlyContinue
+
+          $archName = if ("${{ matrix.arch }}" -eq "x64") { "x64" } else { "arm64" }
+          & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" `
+            "/DVERSION=1.2.0" "/DARCH=$archName" "/DSTAGE=$stage" `
+            "packaging/installer.nsi"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MasterLens-Windows-${{ matrix.arch }}
+          path: MasterLens-1.2.0-Windows-${{ matrix.arch }}.exe

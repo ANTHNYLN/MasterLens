@@ -48,9 +48,72 @@ struct Stats
     std::atomic<double> elapsed     { 0.0 };
     std::atomic<bool>  stereo       { false };
     std::atomic<bool>  hasSignal    { false };
+
+    // --- v1.2 -----------------------------------------------------------
+    std::atomic<float>  psr            { kSilentDb };   // peak-to-short-term ratio
+    std::atomic<float>  psrMin         { kSilentDb };
+    std::atomic<double> psrMinTime     { 0.0 };
+    std::atomic<float>  truePeakMaxTime{ 0.0f };        // seconds
+    std::atomic<int>    spikeCount     { 0 };
+    std::atomic<double> lastSpikeTime  { 0.0 };
+    std::atomic<float>  bandCorrLow    { 0.0f };
+    std::atomic<float>  bandCorrMid    { 0.0f };
+    std::atomic<float>  bandCorrHigh   { 0.0f };
+    std::atomic<float>  bandSideLow    { 0.0f };        // side/mid, %
+    std::atomic<float>  bandSideMid    { 0.0f };
+    std::atomic<float>  bandSideHigh   { 0.0f };
 };
 
-/** Plain copy of Stats, safe to hand to UI code. */
+
+/** One true-peak over-shoot, recorded on the audio thread without allocating. */
+struct TpEvent
+{
+    double time = 0.0;
+    float  overshootDb = 0.0f;
+};
+
+/** Fixed-size ring for true-peak events (single producer, no allocation). */
+class TpEventRing
+{
+public:
+    static constexpr int capacity = 64;
+
+    void push (const TpEvent& e) noexcept
+    {
+        data[write] = e;
+        write = (write + 1) % capacity;
+
+        if (count < capacity)
+            ++count;
+
+        version.fetch_add (1, std::memory_order_release);
+    }
+
+    void reset() noexcept
+    {
+        write = 0;
+        count = 0;
+        version.fetch_add (1, std::memory_order_release);
+    }
+
+    int size() const noexcept { return count; }
+
+    /** Oldest first. Safe enough for display: the reader validates the version. */
+    TpEvent get (int i) const noexcept
+    {
+        const int index = (write - count + i + capacity * 4) % capacity;
+        return data[index];
+    }
+
+    unsigned int getVersion() const noexcept { return version.load (std::memory_order_acquire); }
+
+private:
+    TpEvent data[capacity] {};
+    int write = 0;
+    int count = 0;
+    std::atomic<unsigned int> version { 0 };
+};
+
 struct StatsSnapshot
 {
     float integrated   = kSilentDb;
@@ -71,6 +134,15 @@ struct StatsSnapshot
     double elapsed     = 0.0;
     bool  stereo       = false;
     bool  hasSignal    = false;
+
+    float  psr = kSilentDb;
+    float  psrMin = kSilentDb;
+    double psrMinTime = 0.0;
+    float  truePeakMaxTime = 0.0f;
+    int    spikeCount = 0;
+    double lastSpikeTime = 0.0;
+    float  bandCorrLow = 0.0f, bandCorrMid = 0.0f, bandCorrHigh = 0.0f;
+    float  bandSideLow = 0.0f, bandSideMid = 0.0f, bandSideHigh = 0.0f;
 
     float getPlr() const noexcept { return integrated > -70.0f ? juce::jmax (0.0f, truePeakDb - integrated) : 0.0f; }
 };
@@ -96,6 +168,18 @@ inline StatsSnapshot snapshot (const Stats& s) noexcept
     r.elapsed      = s.elapsed.load();
     r.stereo       = s.stereo.load();
     r.hasSignal    = s.hasSignal.load();
+    r.psr = s.psr.load();
+    r.psrMin = s.psrMin.load();
+    r.psrMinTime = s.psrMinTime.load();
+    r.truePeakMaxTime = s.truePeakMaxTime.load();
+    r.spikeCount = s.spikeCount.load();
+    r.lastSpikeTime = s.lastSpikeTime.load();
+    r.bandCorrLow = s.bandCorrLow.load();
+    r.bandCorrMid = s.bandCorrMid.load();
+    r.bandCorrHigh = s.bandCorrHigh.load();
+    r.bandSideLow = s.bandSideLow.load();
+    r.bandSideMid = s.bandSideMid.load();
+    r.bandSideHigh = s.bandSideHigh.load();
     return r;
 }
 
@@ -107,6 +191,10 @@ inline void resetStats (Stats& s) noexcept
     s.correlation = 0.0f;      s.widthPct = 0.0f;        s.lowSidePct = 0.0f;
     s.dcOffsetDb = kSilentDb;  s.clipEvents = 0;         s.clickEvents = 0;
     s.oversCount = 0;          s.elapsed = 0.0;          s.hasSignal = false;
+    s.psr = kSilentDb;         s.psrMin = kSilentDb;     s.psrMinTime = 0.0;
+    s.truePeakMaxTime = 0.0f;  s.spikeCount = 0;         s.lastSpikeTime = 0.0;
+    s.bandCorrLow = 0.0f;      s.bandCorrMid = 0.0f;     s.bandCorrHigh = 0.0f;
+    s.bandSideLow = 0.0f;      s.bandSideMid = 0.0f;     s.bandSideHigh = 0.0f;
 }
 
 //==============================================================================
@@ -134,6 +222,9 @@ struct Biquad
 
     /** RBJ low pass, used for the low-frequency stereo image check. */
     void designLowPass (double sampleRate, double freq, double q) noexcept;
+
+    /** RBJ high pass. */
+    void designHighPass (double sampleRate, double freq, double q) noexcept;
 };
 
 //==============================================================================
@@ -210,6 +301,8 @@ public:
     /** Copies the most recent short-term (3 s) loudness points, oldest first. */
     void copyRecentShortTerm (std::vector<float>& dest, int maxPoints) const;
 
+    const TpEventRing& getTpEvents() const noexcept { return tpEventRing; }
+
 private:
     void finishPartialBlock (Stats& stats);
     float computeIntegrated() const;
@@ -219,8 +312,22 @@ private:
     int channels = 2;
 
     Biquad kShelf[2], kHighPass[2];
-    Biquad lowPassA[2], lowPassB[2];
+    Biquad lowPassA[2], lowPassB[2];      // low band, LR4 low pass @ 150 Hz
+    Biquad hp150A[2], hp150B[2];          // LR4 high pass @ 150 Hz
+    Biquad lp2kA[2], lp2kB[2];            // LR4 low pass @ 2 kHz
+    Biquad hp2kA[2], hp2kB[2];            // LR4 high pass @ 2 kHz
     TruePeakDetector truePeak[2];
+
+    // per-band accumulators: 0 = <150 Hz, 1 = 150 Hz..2 kHz, 2 = >2 kHz
+    double bandL2[3] {}, bandR2[3] {}, bandLR[3] {}, bandMid[3] {}, bandSide[3] {};
+
+    double peakRing[30] {};
+    int peakRingPos = 0;
+    int peakRingCount = 0;
+    double lastSpikeSecond = -100.0;
+    double lastTpEventTime = -100.0;
+
+    TpEventRing tpEventRing;
 
     int partialLength = 4800;
     int partialSamples = 0;

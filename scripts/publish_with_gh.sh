@@ -9,7 +9,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GH="$ROOT/.tools/gh-bin/gh"
 REPO_NAME="${1:-MasterLens}"
 VISIBILITY="${2:---public}"
-VERSION="1.1.0"
+VERSION="1.2.0"
 DMG="$ROOT/dist/MasterLens-$VERSION-macOS.dmg"
 
 if [ ! -x "$GH" ]; then

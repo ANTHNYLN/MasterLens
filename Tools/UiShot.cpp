@@ -21,6 +21,10 @@ public:
         aboutShot = commandLine.containsIgnoreCase ("about");
         expandedShot = commandLine.containsIgnoreCase ("expand");
 
+        for (int p = 0; p <= 6; ++p)
+            if (commandLine.containsIgnoreCase ("page" + juce::String (p)))
+                pageShot = p;
+
         processor = std::make_unique<MasterLensAudioProcessor>();
         processor->setRateAndBufferSizeDetails (48000.0, 512);
         processor->prepareToPlay (48000.0, 512);
@@ -30,7 +34,10 @@ public:
         processor->apvts.state.setProperty ("language", english ? 1 : 0, nullptr);
 
         editor = std::make_unique<MasterLensAudioProcessorEditor> (*processor);
-        editor->setSize (1180, 760);
+        editor->setSize (1280, 820);
+
+        if (pageShot >= 0)
+            editor->setPageForSnapshot (pageShot);
 
         if (aboutShot)
             editor->setAboutVisible (true);
@@ -149,6 +156,7 @@ private:
         const auto output = juce::File::getCurrentWorkingDirectory()
                                 .getChildFile (aboutShot ? "ui_shot_about.png"
                                               : expandedShot ? "ui_shot_expanded.png"
+                                              : pageShot >= 0 ? ("ui_shot_page" + juce::String (pageShot) + ".png")
                                               : (english ? "ui_shot_en.png" : "ui_shot.png"));
 
         juce::PNGImageFormat png;
@@ -164,6 +172,7 @@ private:
     bool english = false;
     bool aboutShot = false;
     bool expandedShot = false;
+    int pageShot = -1;
 };
 
 START_JUCE_APPLICATION (UiShotApplication)
