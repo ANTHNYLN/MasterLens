@@ -46,7 +46,7 @@ juce::Font uiFont (float height, bool bold)
     if (it != cache.end())
         return it->second;
 
-    juce::Font font (juce::FontOptions (typefaceName(), height * 1.12f,
+    juce::Font font (juce::FontOptions (typefaceName(), height * 1.22f,
                                         bold ? juce::Font::bold : juce::Font::plain)
                          .withFallbacks ({ "PingFang SC", "Hiragino Sans GB", "Arial Unicode MS" }));
 
