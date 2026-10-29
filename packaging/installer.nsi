@@ -1,4 +1,6 @@
 ; MasterLens Windows installer (NSIS)
+; 由 CI 调用：
+;   makensis /DVERSION=1.2.0 /DARCH=x64 /DSTAGE=<abs stage> /DOUTFILE=<abs out> packaging/installer.nsi
 Unicode true
 !include "MUI2.nsh"
 
@@ -11,9 +13,12 @@ Unicode true
 !ifndef STAGE
   !define STAGE "stage-x64"
 !endif
+!ifndef OUTFILE
+  !define OUTFILE "MasterLens-${VERSION}-Windows-${ARCH}.exe"
+!endif
 
 Name "MasterLens ${VERSION} (${ARCH})"
-OutFile "MasterLens-${VERSION}-Windows-${ARCH}.exe"
+OutFile "${OUTFILE}"
 InstallDir "$PROGRAMFILES64\MasterLens"
 RequestExecutionLevel admin
 
@@ -25,17 +30,19 @@ RequestExecutionLevel admin
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "SimpChinese"
 
-Section "VST3 + Standalone"
+Section "MasterLens (VST3 + Standalone)"
   SetOutPath "$COMMONPROGRAMFILES64\VST3\MasterLens.vst3"
   File /r "${STAGE}\MasterLens.vst3\*.*"
 
   SetOutPath "$INSTDIR"
   File "${STAGE}\MasterLens.exe"
+
+  WriteUninstaller "$INSTDIR\Uninstall.exe"
 SectionEnd
 
 Section "Uninstall"
-  Delete "$COMMONPROGRAMFILES64\VST3\MasterLens.vst3\*.*"
   RMDir /r "$COMMONPROGRAMFILES64\VST3\MasterLens.vst3"
   Delete "$INSTDIR\MasterLens.exe"
+  Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
 SectionEnd
