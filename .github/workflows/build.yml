@@ -1,6 +1,5 @@
 name: Build MasterLens (macOS + Windows)
 
-# Node 20 已弃用：所有官方 action 使用 v7（Node 24 运行时）
 on:
   push:
     tags: [ "v*" ]
@@ -64,9 +63,7 @@ jobs:
       matrix:
         include:
           - arch: x64
-            generatorArch: x64
           - arch: arm64
-            generatorArch: ARM64
     steps:
       - uses: actions/checkout@v7
 
@@ -74,13 +71,22 @@ jobs:
         shell: bash
         run: git clone --depth 1 --branch "${JUCE_TAG}" https://github.com/juce-framework/JUCE.git .tools/JUCE
 
-      - name: Configure (MSVC, ${{ matrix.arch }})
-        run: cmake -S . -B build -G "Visual Studio 17 2022" -A ${{ matrix.generatorArch }}
-
-      - name: Build VST3 + Standalone
+      # 不依赖具体 VS 版本：用 vswhere 找到最新 VS，加载对应架构环境，再用 Ninja 构建
+      - name: Configure + build with MSVC
+        shell: cmd
         run: |
-          cmake --build build --config Release --target MasterLens_VST3 -j 4
-          cmake --build build --config Release --target MasterLens_Standalone -j 4
+          setlocal enabledelayedexpansion
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSPATH=%%i"
+          if "!VSPATH!"=="" (
+            echo 找不到 Visual Studio C++ 工具链
+            exit /b 1
+          )
+          echo Using Visual Studio: !VSPATH!
+          call "!VSPATH!\VC\Auxiliary\Build\vcvarsall.bat" ${{ matrix.arch }} || exit /b 1
+          where cl
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release || exit /b 1
+          cmake --build build --config Release --target MasterLens_VST3 || exit /b 1
+          cmake --build build --config Release --target MasterLens_Standalone || exit /b 1
 
       - name: Install NSIS
         run: choco install nsis -y --no-progress
@@ -91,7 +97,7 @@ jobs:
           $stage = Join-Path $PWD "stage-${{ matrix.arch }}"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item -Recurse "build/MasterLens_artefacts/Release/VST3/MasterLens.vst3" $stage
-          Copy-Item -Recurse "build/MasterLens_artefacts/Release/Standalone/MasterLens.exe" $stage
+          Copy-Item "build/MasterLens_artefacts/Release/Standalone/MasterLens.exe" $stage
           "STAGE_DIR=$stage" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Build installer (NSIS)
@@ -99,12 +105,7 @@ jobs:
         run: |
           $out = Join-Path $PWD "MasterLens-${{ env.APP_VERSION }}-Windows-${{ matrix.arch }}.exe"
           $makensis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
-          & $makensis /V2 `
-            "/DVERSION=${{ env.APP_VERSION }}" `
-            "/DARCH=${{ matrix.arch }}" `
-            "/DSTAGE=$env:STAGE_DIR" `
-            "/DOUTFILE=$out" `
-            "packaging/installer.nsi"
+          & $makensis /V2 "/DVERSION=${{ env.APP_VERSION }}" "/DARCH=${{ matrix.arch }}" "/DSTAGE=$env:STAGE_DIR" "/DOUTFILE=$out" "packaging/installer.nsi"
           if (!(Test-Path $out)) { throw "NSIS 未生成安装包" }
 
       - uses: actions/upload-artifact@v7
