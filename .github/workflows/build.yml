@@ -63,7 +63,7 @@ jobs:
       matrix:
         include:
           - arch: x64
-          - arch: arm64
+          - arch: ARM64
     steps:
       - uses: actions/checkout@v7
 
@@ -71,22 +71,30 @@ jobs:
         shell: bash
         run: git clone --depth 1 --branch "${JUCE_TAG}" https://github.com/juce-framework/JUCE.git .tools/JUCE
 
-      # 不依赖具体 VS 版本：用 vswhere 找到最新 VS，加载对应架构环境，再用 Ninja 构建
-      - name: Configure + build with MSVC
-        shell: cmd
+      - name: Detect Visual Studio generator
+        shell: pwsh
         run: |
-          setlocal enabledelayedexpansion
-          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSPATH=%%i"
-          if "!VSPATH!"=="" (
-            echo 找不到 Visual Studio C++ 工具链
-            exit /b 1
-          )
-          echo Using Visual Studio: !VSPATH!
-          call "!VSPATH!\VC\Auxiliary\Build\vcvarsall.bat" ${{ matrix.arch }} || exit /b 1
-          where cl
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release || exit /b 1
-          cmake --build build --config Release --target MasterLens_VST3 || exit /b 1
-          cmake --build build --config Release --target MasterLens_Standalone || exit /b 1
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $ver = & $vswhere -latest -products * -property installationVersion
+          $path = & $vswhere -latest -products * -property installationPath
+          Write-Host "Visual Studio $ver at $path"
+          $major = [int](($ver -split '\.')[0])
+          $gen = switch ($major) {
+            17 { "Visual Studio 17 2022" }
+            18 { "Visual Studio 18 2026" }
+            default { "Visual Studio 18 2026" }
+          }
+          "VS_GENERATOR=$gen" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Generator: $gen"
+          Get-ChildItem "$path\VC\Tools\MSVC" -Directory | Select-Object -ExpandProperty Name
+
+      - name: Configure (MSVC ${{ matrix.arch }})
+        run: cmake -S . -B build -G "$env:VS_GENERATOR" -A ${{ matrix.arch }}
+
+      - name: Build VST3 + Standalone
+        run: |
+          cmake --build build --config Release --target MasterLens_VST3 -j 4
+          cmake --build build --config Release --target MasterLens_Standalone -j 4
 
       - name: Install NSIS
         run: choco install nsis -y --no-progress
@@ -104,8 +112,9 @@ jobs:
         shell: pwsh
         run: |
           $out = Join-Path $PWD "MasterLens-${{ env.APP_VERSION }}-Windows-${{ matrix.arch }}.exe"
-          $makensis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
-          & $makensis /V2 "/DVERSION=${{ env.APP_VERSION }}" "/DARCH=${{ matrix.arch }}" "/DSTAGE=$env:STAGE_DIR" "/DOUTFILE=$out" "packaging/installer.nsi"
+          & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" /V2 `
+            "/DVERSION=${{ env.APP_VERSION }}" "/DARCH=${{ matrix.arch }}" `
+            "/DSTAGE=$env:STAGE_DIR" "/DOUTFILE=$out" "packaging/installer.nsi"
           if (!(Test-Path $out)) { throw "NSIS 未生成安装包" }
 
       - uses: actions/upload-artifact@v7
