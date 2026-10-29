@@ -30,8 +30,8 @@ jobs:
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           -G "Unix Makefiles" -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
 
-      - name: Build
-        run: cmake --build build --config Release --target MasterLens -j 4
+      - name: Build (all bundles)
+        run: cmake --build build --config Release -j 4
 
       - name: Package DMG
         run: |
@@ -48,6 +48,9 @@ jobs:
           codesign --force --deep -s - stage/MasterLens.component || true
           hdiutil create -volname "MasterLens ${APP_VERSION}" -srcfolder stage -fs HFS+ \
                   -format UDZO -ov "MasterLens-${APP_VERSION}-macOS.dmg"
+          SIZE=$(stat -f%z "MasterLens-${APP_VERSION}-macOS.dmg")
+          echo "DMG size: $SIZE bytes"
+          test "$SIZE" -gt 1000000
 
       - uses: actions/upload-artifact@v7
         with:
