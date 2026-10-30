@@ -40,15 +40,51 @@ void MasterLensAudioProcessorEditor::updateTexts()
     exportButton.setTooltip (T ("导出 TXT / JSON / CSV 检查报告（⌘E）",
                                 "Export TXT / JSON / CSV QC report (Cmd+E)"));
 
-    const int selected = juce::jlimit (0, ml::presets::count - 1, presetBox.getSelectedItemIndex());
+    const int selected = juce::jlimit (0, ml::presets::customIndex, presetBox.getSelectedId() - 1);
     updatingPreset = true;
     presetBox.clear (juce::dontSendNotification);
 
-    for (int i = 0; i < ml::presets::count; ++i)
-        presetBox.addItem (ml::U8 (en ? ml::presets::namesEn[i] : ml::presets::namesZh[i]), i + 1);
+    int lastKind = -1;
 
-    presetBox.setSelectedItemIndex (selected, juce::dontSendNotification);
+    for (int i = 0; i < ml::presets::count; ++i)
+    {
+        const auto& e = ml::presets::entries[i];
+
+        if (e.kind != lastKind)
+        {
+            if (e.kind == 1)
+                presetBox.addSectionHeading (T ("曲风参考", "Genre reference"));
+            else if (e.kind == 2)
+                presetBox.addSectionHeading (T ("手动设定", "Manual"));
+
+            lastKind = e.kind;
+        }
+
+        presetBox.addItem (ml::U8 (en ? e.en : e.zh), i + 1);
+    }
+
+    presetBox.setSelectedId (selected + 1, juce::dontSendNotification);
     updatingPreset = false;
+
+    // Guidance for the current choice: the LRA window this target normally implies.
+    if (juce::isPositiveAndBelow (selected, ml::presets::customIndex))
+    {
+        const auto& e = ml::presets::entries[selected];
+
+        juce::String tip (ml::U8 (en ? e.en : e.zh));
+        tip << "  |  " << juce::String (e.target, 1) << " LUFS"
+            << "  |  TP " << juce::String (e.ceiling, 1) << " dBTP";
+
+        if (e.lraHi > 0.0f)
+            tip << "  |  LRA " << juce::String (e.lraLo, 0) << "-" << juce::String (e.lraHi, 0) << " LU";
+
+        presetBox.setTooltip (tip);
+    }
+    else
+    {
+        presetBox.setTooltip (T ("自定义目标：手动拖动目标响度与真峰值上限",
+                                "Custom target: set loudness and true-peak ceiling by hand"));
+    }
 }
 
 //==============================================================================

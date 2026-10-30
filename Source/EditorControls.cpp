@@ -5,7 +5,7 @@ using ml::T;
 //==============================================================================
 void MasterLensAudioProcessorEditor::buildControls()
 {
-    presetBox.onChange = [this] { applyPreset (presetBox.getSelectedItemIndex()); };
+    presetBox.onChange = [this] { applyPreset (presetBox.getSelectedId() - 1); };
     addAndMakeVisible (presetBox);
 
     const auto captionFont = ml::uiFont (ml::tokens::label);

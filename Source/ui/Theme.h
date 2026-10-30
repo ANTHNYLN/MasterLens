@@ -94,10 +94,12 @@ inline juce::String midDot() { return juce::String::charToString (0x00B7); }
 inline juce::String times() { return juce::String::charToString (0x00D7); }
 
 /** U+00B1 plus-minus sign. */
-inline juce::String plusMinus() { return juce::String::charToString (0x00B1); }
+/** ASCII "+/-": U+00B1 renders as "Â±" in some font/codepage combinations. */
+inline juce::String plusMinus() { return juce::String ("+/-"); }
 
-/** "  ·  " separator built from code points (never a raw UTF-8 literal). */
-inline juce::String sep() { return "  " + midDot() + "  "; }
+/** Inline separator. ASCII only: some UI fonts in the wild map U+00B7 through a
+    Latin-1 codepage and render it as "Â·". */
+inline juce::String sep() { return "  |  "; }
 
 /** Formats a value with fixed decimals and a typographic minus. */
 inline juce::String num (float v, int decimals = 1)

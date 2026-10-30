@@ -7,11 +7,11 @@ using ml::T;
 //==============================================================================
 void MasterLensAudioProcessorEditor::applyPreset (int index)
 {
-    if (updatingPreset || index < 0 || index >= 7)
+    if (updatingPreset || index < 0 || index >= ml::presets::customIndex)
         return;
 
-    setParameter ("targetLufs", ml::presets::targets[index]);
-    setParameter ("tpCeiling", ml::presets::ceilings[index]);
+    setParameter ("targetLufs", ml::presets::entries[index].target);
+    setParameter ("tpCeiling", ml::presets::entries[index].ceiling);
 }
 
 void MasterLensAudioProcessorEditor::syncPresetToParameters()
@@ -22,12 +22,12 @@ void MasterLensAudioProcessorEditor::syncPresetToParameters()
     const float target = processor.getTargetLufs();
     const float ceiling = processor.getCeilingDb();
 
-    int match = 7;
+    int match = ml::presets::customIndex;
 
-    for (int i = 0; i < 7; ++i)
+    for (int i = 0; i < ml::presets::customIndex; ++i)
     {
-        if (std::abs (target - ml::presets::targets[i]) < 0.05f
-            && std::abs (ceiling - ml::presets::ceilings[i]) < 0.05f)
+        if (std::abs (target - ml::presets::entries[i].target) < 0.05f
+            && std::abs (ceiling - ml::presets::entries[i].ceiling) < 0.05f)
         {
             match = i;
             break;
@@ -35,7 +35,7 @@ void MasterLensAudioProcessorEditor::syncPresetToParameters()
     }
 
     updatingPreset = true;
-    presetBox.setSelectedItemIndex (match, juce::dontSendNotification);
+    presetBox.setSelectedId (match + 1, juce::dontSendNotification);
     updatingPreset = false;
 }
 
