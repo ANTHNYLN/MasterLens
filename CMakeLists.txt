@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(MasterLens VERSION 1.2.0 LANGUAGES C CXX)
+project(MasterLens VERSION 1.3.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -14,7 +14,7 @@ endif()
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/.tools/JUCE ${CMAKE_BINARY_DIR}/JUCE EXCLUDE_FROM_ALL)
 
 juce_add_plugin(MasterLens
-    VERSION 1.2.0
+    VERSION 1.3.0
     COMPANY_NAME "OrchAudio"
     BUNDLE_ID "com.orchaudio.masterlens"
     PLUGIN_MANUFACTURER_CODE OrcA
@@ -33,18 +33,43 @@ juce_add_plugin(MasterLens
     VST3_CATEGORIES Fx Analyzer
 )
 
-target_sources(MasterLens PRIVATE
+set(MASTERLENS_SOURCES
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
+    Source/EditorControls.cpp
+    Source/EditorPaint.cpp
+    Source/EditorLayout.cpp
+    Source/EditorTimer.cpp
+    Source/EditorRail.cpp
+    Source/EditorTexts.cpp
+    Source/EditorPresets.cpp
+    Source/EditorReportTxt.cpp
+    Source/EditorJson.cpp
+    Source/EditorCsv.cpp
     Source/dsp/AnalysisEngine.cpp
     Source/dsp/SpectrumAnalyzer.cpp
     Source/dsp/ReferenceSpectrum.cpp
     Source/ui/Theme.cpp
     Source/ui/Panels.cpp
-    Source/ui/Displays.cpp
+    Source/ui/Meters.cpp
+    Source/ui/Stereo.cpp
+    Source/ui/Spectra.cpp
+    Source/ui/History.cpp
+    Source/ui/IssueList.cpp
+    Source/ui/About.cpp
+    Source/ui/Checklist.cpp
+    Source/ui/Rail.cpp
+    Source/ui/Timeline.cpp
+    Source/ui/Detail.cpp
+    Source/ui/DetailPages.cpp
+    Source/ui/DetailPeak.cpp
+    Source/ui/DetailMix.cpp
+    Source/ui/DetailDiag.cpp
+    Source/ui/DetailTime.cpp
     Source/ui/Advisor.cpp
-    Source/ui/Modules.cpp
 )
+
+target_sources(MasterLens PRIVATE ${MASTERLENS_SOURCES})
 
 target_compile_definitions(MasterLens PUBLIC
     JUCE_WEB_BROWSER=0
@@ -101,16 +126,7 @@ juce_add_gui_app(MasterLensUiShot PRODUCT_NAME "MasterLensUiShot")
 
 target_sources(MasterLensUiShot PRIVATE
     Tools/UiShot.cpp
-    Source/PluginProcessor.cpp
-    Source/PluginEditor.cpp
-    Source/dsp/AnalysisEngine.cpp
-    Source/dsp/SpectrumAnalyzer.cpp
-    Source/dsp/ReferenceSpectrum.cpp
-    Source/ui/Theme.cpp
-    Source/ui/Panels.cpp
-    Source/ui/Displays.cpp
-    Source/ui/Advisor.cpp
-    Source/ui/Modules.cpp
+    ${MASTERLENS_SOURCES}
 )
 
 target_include_directories(MasterLensUiShot PRIVATE Source)

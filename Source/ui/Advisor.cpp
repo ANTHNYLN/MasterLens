@@ -1,4 +1,5 @@
 #include "Advisor.h"
+#include "../Delivery.h"
 #include "../Text.h"
 #include "../dsp/SpectrumAnalyzer.h"
 #include "Localisation.h"
@@ -94,6 +95,58 @@ void Advisor::update (const StatsSnapshot& stats,
                     "True peak {tp} dBTP is only {d} dB below the ceiling; encoding may push it past 0 dBTP."),
                  { { "tp", one (stats.truePeakDb) }, { "d", one (ceilingDb - stats.truePeakDb) } }),
              Severity::info);
+
+    // ---------------------------------------------------------------- delivery
+    if (stats.integrated > -70.0f && stats.truePeakDb > -70.0f)
+    {
+        int over = 0, warned = 0;
+        const char* worstZh = "Spotify";
+        const char* worstEn = "Spotify";
+        float worstTp = -100.0f;
+        float worstGain = 0.0f;
+
+        for (int i = 0; i < numPlatforms; ++i)
+        {
+            const auto& p = platform (i);
+            const auto r = evaluate (stats, p);
+
+            if (r.state == DeliveryState::over)
+            {
+                ++over;
+
+                if (r.predictedTp > worstTp)
+                {
+                    worstTp = r.predictedTp;
+                    worstGain = r.gainDb;
+                    worstZh = p.nameZh;
+                    worstEn = p.nameEn;
+                }
+            }
+            else if (r.state == DeliveryState::warning)
+            {
+                ++warned;
+            }
+        }
+
+        if (over > 0)
+            add ("delivery-over", T ("按平台归一化后真峰值超限", "Predicted true peak over ceiling"),
+                 TF (T ("{n} 个平台在归一化后预测真峰值超过上限，最高出现在 {p}（{tp} dBTP，需增益 {g} dB）。流媒体转码会削波，请下调限制器输出。",
+                        "{n} platforms would exceed the true-peak ceiling after normalisation - worst is "
+                        "{p} at {tp} dBTP (gain {g} dB). Lossy encoding will clip, so lower the limiter output."),
+                     { { "n", juce::String (over) }, { "p", T (worstZh, worstEn) },
+                       { "tp", one (worstTp) }, { "g", oneSigned (worstGain) } }),
+                 Severity::critical);
+        else if (warned > 0)
+            add ("delivery-warn", T ("交付余量偏紧", "Delivery headroom is tight"),
+                 T ("至少一个平台的预测真峰值贴近上限，建议再留 0.3 dB 余量。",
+                    "At least one platform sits right at the ceiling - leave another 0.3 dB of headroom."),
+                 Severity::warn);
+        else
+            add ("delivery-ok", T ("各平台归一化后均在限内", "Every platform stays within the ceiling"),
+                 T ("6 个平台的归一化增益与预测真峰值都在上限内。",
+                    "All six platforms stay inside the true-peak ceiling after gain."),
+                 Severity::good);
+    }
 
     // ---------------------------------------------------------------- dynamics
     if (stats.lra > 0.0f)

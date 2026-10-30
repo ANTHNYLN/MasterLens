@@ -4,7 +4,7 @@
 
 ## 0. 一句话现状
 
-macOS 母带交付检查插件 **MasterLens 1.2.0** 已完成并在本机验证；仓库 `ANTHNYLN/MasterLens` 已发布 v1.2.0（macOS DMG + Windows x64/ARM64 安装包）。当前无阻塞性 bug，剩余是打磨与验证项（见 §7）。
+macOS 母带交付检查插件 **MasterLens 1.3.0**：在 1.2 的测量内核之上完成 UI 重构（深色专业风 + 浅色主题、令牌化设计系统、12 列栅格、A/B 快照、检查清单、导出 CSV），测量/DSP 逻辑未改动。1.2 的测量结论仍全部有效（DSP 自检 17 项 + 新增 8 项交付预测断言全部通过，CPU 0.36 %）。
 
 ## 1. 环境事实（本机）
 
@@ -16,31 +16,56 @@ macOS 母带交付检查插件 **MasterLens 1.2.0** 已完成并在本机验证�
 | GitHub CLI | `/Users/orch/Documents/github/vst/.tools/gh-bin/gh`（已登录 ANTHNYLN，凭据在钥匙串） |
 | 仓库 | https://github.com/ANTHNYLN/MasterLens （remote 为 SSH：`git@github.com:ANTHNYLN/MasterLens.git`） |
 | 工程目录 | `/Users/orch/Documents/github/vst` |
-| 桌面产物 | `~/Desktop/MasterLens-1.2.0-{macOS.dmg, Windows-x64.exe, Windows-ARM64.exe}` |
+| 桌面产物 | `~/Desktop/MasterLens-1.3.0-{macOS.dmg, Windows-x64.exe, Windows-ARM64.exe}` |
 
 ## 2. 工程结构
 
 ```
 CMakeLists.txt              juce_add_plugin(FORMATS AU VST3 Standalone) + MasterLensDspTest + MasterLensUiShot
 Source/
-  PluginProcessor.*         APVTS 参数（targetLufs / tpCeiling / smoothing）、总线、状态存取
-  PluginEditor.*            顶栏 + ModuleRail + DetailArea + TimelineStrip + About；30fps 定时器
   Version.h                 kVersion/kDeveloper(KNGTNPT)/kOrganisation(BerryStudio)
   Text.h                    ml::U8()（JUCE String(const char*) 按 ASCII 解析，中文必须走它）
+  Presets.h                 8 个静态预设（名称 / 目标 / 上限）
   Delivery.h                平台静态表 + evaluate()（增益/预测TP/三级状态）
+  PluginProcessor.*         APVTS 参数（targetLufs / tpCeiling / smoothing）、总线、状态存取
+  PluginEditor.*            编辑器骨架（控件创建、窗口尺寸、快捷键挂载）
+  EditorControls.cpp        控件搭建 + 信号回调
+  EditorPaint.cpp           Header / 参数条 / 底栏绘制
+  EditorLayout.cpp          resized()、主题切换
+  EditorTimer.cpp           30 fps 轮询、标记合并、UiState 组装
+  EditorRail.cpp            左导航状态与整体结论
+  EditorTexts.cpp           文案 / tooltip / 快捷键 / 保持 / A-B 快照
+  EditorPresets.cpp         预设、清零、参考轨、导出入口
+  EditorReportTxt/Json/Csv  三种报告格式
   dsp/
-    AnalysisEngine.*        K加权 I/M/S/LRA、4×真峰值、PSR、TP事件环、三段分频相关/侧向、DC、爆音
+    AnalysisEngine.*        K加权 I/M/S/LRA、4×真峰值、PSR、TP事件环、三段分频、DC、爆音
     SpectrumAnalyzer.*      8192 FFT、对数插值取值、长期平均谱、4段能量占比、谐振检测、参考谱比对
     ReferenceSpectrum.*     后台线程 Welch 平均（1–4 条参考轨），SpinLock 交出结果
   ui/
+    Theme.h/.cpp            设计令牌 + 深/浅调色板 + 格式化（U+2212 / en dash）+ LookAndFeel
     Localisation.h          ml::T(zh,en) / TF() 占位符；语言存 apvts.state["language"]
-    Theme.*                 调色板 + uiFont/monoFont（字号系数 1.22，带 static 缓存）
-    Widgets.h               Card/LoudnessTiles/LevelBars/HistoryGraph/SpectrumDisplay/BandBalance/StereoMeters/IssueList/AboutPanel
-    Modules.h/.cpp          ModuleRail、TimelineStrip、DetailArea（7 个模块页 + 页内绘制）
-    Advisor.*               规则引擎（三级严重度 + 迟滞）
-    Panels.cpp / Displays.cpp
-Tests/DspTest.cpp           17 项断言 + CPU 基准（当前：ALL CHECKS PASSED，CPU 0.42%）
-Tools/UiShot.cpp            离屏渲染截图：参数 "" | en | about | expand | page0..page6
+    StatusText.h            四级状态文案与颜色
+    Widgets.h               组件声明（MetricGrid / LevelMeters / HistoryGraph / SnapshotChip …）
+    Panels.cpp              指标卡 + 空态
+    Meters.cpp              M/S 横向电平
+    Stereo.cpp              相关性 / 宽度 / 低频侧向 + 三段表 + 事件 chip
+    Spectra.cpp             频谱与 10 段平衡绘制
+    History.cpp             历史曲线（窗口切换 + hover）
+    IssueList.cpp           可展开问题列表
+    About.cpp               关于面板 + A/B 快照 chip
+    Checklist.cpp           9 项固定阈值检查清单
+    Rail.cpp                左导航
+    Timeline.cpp            底部整曲时间线
+    Modules.h               UiState / PageId / 组件声明
+    Detail.cpp              页面骨架、空态切换、布局
+    DetailPages.cpp         页面分发 + Header/Meta
+    DetailPeak.cpp          真峰值页
+    DetailMix.cpp           频谱 chip / 交付表
+    DetailDiag.cpp          诊断页
+    DetailTime.cpp          时间线页
+    Advisor.*               规则引擎（三级严重度 + 迟滞 + 交付预测规则）
+Tests/DspTest.cpp           25 项断言 + CPU 基准
+Tools/UiShot.cpp            离屏渲染截图："" | en | about | expand | page0..page6 | small | light | empty | snap
 .github/workflows/build.yml macOS + Windows(x64/ARM64) 矩阵，自动探测 VS 版本 + NSIS
 packaging/                  Install.command / Uninstall.command / README-DMG.txt / installer.nsi
 scripts/make_dmg.sh         通用二进制构建 + 签名 + DMG（并复制到桌面）
@@ -59,8 +84,9 @@ $CM --build build --config Release -j 10
 # 单元/自检
 ./build/MasterLensDspTest_artefacts/Release/MasterLensDspTest
 
-# 界面离屏截图（会自动生成 ui_shot_*.png）
+# 界面离屏截图（会自动生成 ui_shot_*.png，并额外写一份到 /tmp/uishot_*.png）
 ./build/MasterLensUiShot_artefacts/Release/MasterLensUiShot.app/Contents/MacOS/MasterLensUiShot page2
+# 可用参数：en | about | expand | page0..page6 | small | light | empty | snap
 
 # 通用二进制 + DMG（输出 dist/ 并复制到桌面）
 ./scripts/make_dmg.sh
@@ -100,20 +126,22 @@ git add -A && git commit -m "..." && git push
 
 ## 6. 已知实现细节/坑
 
-- 中文字面量**必须**用 `ml::U8()` / `T()`，否则乱码（JUCE 的 `String(const char*)` 走 ASCII）。
+- 中文字面量**必须**用 `ml::U8()` / `T()`；`juce::String(const char*)` 按 Latin-1 解释。
+- **非 ASCII 字面量不得出现在 `const char* + juce::String` 的左侧**：JUCE 的 `operator+ (const char*, const String&)` 会把右侧字符串的 UTF-8 字节当成单字符，得到 `Â·`。需要拼接时用 `juce::String("...") + ml::sep() + ...`。
 - `uiFont/monoFont` 内部有 static 缓存，且**故意不析构**（放在堆上），否则退出/卸载时崩溃。
-- 频谱绘制用 `analyzer->getMagnitudeAt(hz)` 插值，不要再逐像素取最大值。
+- `theme` 调色板是可变 inline 变量：切换主题只需 `theme::apply()` + `repaint()`，但**离屏缓存的组件**必须比较 `theme::revision()`（频谱/分段/历史已实现）。
 - 每个详情页的 `DetailArea::setState` 按页做了重绘节流，新增页面时保持同样策略。
-- 版本号改 4 处：`Source/Version.h`、`CMakeLists.txt`（两处）、`scripts/make_dmg.sh`、`scripts/publish_with_gh.sh`。
+- 版本号改 5 处：`Source/Version.h`、`CMakeLists.txt`（两处）、`scripts/make_dmg.sh`、`scripts/publish_with_gh.sh`、`.github/workflows/build.yml`。
+- **仓库位于 iCloud 同步的 `~/Documents`**：UiShot 写出的 PNG 可能被同步服务回滚成旧版本，造成“代码改了但截图没变”的假象。`Tools/UiShot.cpp` 因此同时写一份到 `/tmp/uishot_<name>.png`，自查请看 `/tmp` 副本。
 
 ## 7. 待办 / 建议下一步（按优先级）
 
-1. **Windows 实机验证**：两个 `.exe` 由 CI 产出且为合法 NSIS 包，但未在 Windows 上做过“安装→DAW 扫描→出声”验证。
-2. **参考轨导入端到端验证**：代码路径已编译通过，未用真实音频试过（可只加一个离线用例：自比应归零、+6 dB 窄带应报 ≥5 dB）。
-3. **自动化测试补强**：PSR、TP 事件、谐振、平台预测目前只有逻辑，没有断言；建议在 `Tests/DspTest.cpp` 里加合成信号用例。
-4. **界面打磨**：频谱页页脚（4 段占比 / 谐振 / 参考状态）在小窗口下略拥挤；频段条在 60 px 高时偏短。
-5. **i18n 覆盖**：新增的 DetailArea 页内文案已双语，但 `delivery` 表头列名等个别字符串建议再走查一遍。
-6. **可访问性/HiDPI**：目前字号随窗口固定，未跟随系统“更大文字”辅助功能。
+1. **Windows 实机验证**：CI 产出的 `.exe` 尚未在 Windows 上做过“安装→DAW 扫描→出声”验证。
+2. **参考轨导入端到端验证**：可加离线用例（自比归零、+6 dB 窄带应报 ≥5 dB）。
+3. **测试补强**：PSR / TP 事件 / 谐振目前仍只有逻辑，没有断言；交付预测已有 8 项断言。
+4. **界面打磨**：立体声页中间仍偏空，可加矢量示波器；频谱页小窗口下页脚略挤。
+5. **i18n 走查**：新增页面文案已双语，个别导出/表格列名建议再核对。
+6. **可访问性**：字号未跟随系统“更大文字”，只随窗口缩放。
 
 ## 8. 新会话开局提示（直接粘贴）
 

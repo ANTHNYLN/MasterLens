@@ -4,6 +4,7 @@
 
 #include "dsp/AnalysisEngine.h"
 #include "dsp/SpectrumAnalyzer.h"
+#include "Delivery.h"
 
 static int failures = 0;
 
@@ -250,7 +251,36 @@ int main()
     }
 
     // ---------------------------------------------------------------------
-    // 6) CPU benchmark (stereo, 48 kHz, 512-sample blocks)
+    // 6) Delivery prediction: deterministic gain + predicted true peak
+    // ---------------------------------------------------------------------
+    {
+        ml::StatsSnapshot s;
+        s.integrated = -16.0f;
+        s.truePeakDb = -3.0f;
+        s.hasSignal = true;
+
+        const auto spotify = ml::evaluate (s, ml::platform (0));   // -14 LUFS / -1 dBTP
+        check ("delivery gain (Spotify)", spotify.gainDb, 2.0, 0.001);
+        check ("delivery predicted TP", spotify.predictedTp, -1.0, 0.001);
+        check ("delivery state warning", (double) spotify.state,
+               (double) ml::DeliveryState::warning, 0.0);
+
+        s.truePeakDb = -1.0f;
+        const auto over = ml::evaluate (s, ml::platform (0));
+        check ("delivery predicted TP (over)", over.predictedTp, 1.0, 0.001);
+        check ("delivery state over", (double) over.state, (double) ml::DeliveryState::over, 0.0);
+
+        s.integrated = -100.0f;
+        s.truePeakDb = -100.0f;
+        const auto silent = ml::evaluate (s, ml::platform (0));
+        check ("delivery silent gain", silent.gainDb, 0.0, 0.0);
+        check ("delivery silent state", (double) silent.state, (double) ml::DeliveryState::ok, 0.0);
+
+        check ("platform table size", (double) ml::numPlatforms, 6.0, 0.0);
+    }
+
+    // ---------------------------------------------------------------------
+    // 7) CPU benchmark (stereo, 48 kHz, 512-sample blocks)
     // ---------------------------------------------------------------------
     {
         ml::Stats stats;

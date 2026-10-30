@@ -20,6 +20,10 @@ public:
         english = commandLine.containsIgnoreCase ("en");
         aboutShot = commandLine.containsIgnoreCase ("about");
         expandedShot = commandLine.containsIgnoreCase ("expand");
+        smallShot = commandLine.containsIgnoreCase ("small");
+        lightShot = commandLine.containsIgnoreCase ("light");
+        emptyShot = commandLine.containsIgnoreCase ("empty");
+        snapShot = commandLine.containsIgnoreCase ("snap");
 
         for (int p = 0; p <= 6; ++p)
             if (commandLine.containsIgnoreCase ("page" + juce::String (p)))
@@ -29,12 +33,14 @@ public:
         processor->setRateAndBufferSizeDetails (48000.0, 512);
         processor->prepareToPlay (48000.0, 512);
 
-        feedTestAudio (200.0);
+        if (! emptyShot)
+            feedTestAudio (200.0);
 
         processor->apvts.state.setProperty ("language", english ? 1 : 0, nullptr);
+        processor->apvts.state.setProperty ("appearance", lightShot ? 0 : 1, nullptr);
 
         editor = std::make_unique<MasterLensAudioProcessorEditor> (*processor);
-        editor->setSize (1280, 820);
+        editor->setSize (smallShot ? 900 : 1280, smallShot ? 620 : 820);
 
         if (pageShot >= 0)
             editor->setPageForSnapshot (pageShot);
@@ -127,6 +133,9 @@ private:
         if (expandedShot)
             editor->expandFirstIssueForSnapshot();
 
+        if (snapShot)
+            editor->captureSnapshotForSnapshot (0);
+
         std::vector<float> curve;
         processor->copyShortTermCurve (curve, 1800);
 
@@ -153,13 +162,28 @@ private:
 
         const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 2.0f);
 
-        const auto output = juce::File::getCurrentWorkingDirectory()
-                                .getChildFile (aboutShot ? "ui_shot_about.png"
-                                              : expandedShot ? "ui_shot_expanded.png"
-                                              : pageShot >= 0 ? ("ui_shot_page" + juce::String (pageShot) + ".png")
-                                              : (english ? "ui_shot_en.png" : "ui_shot.png"));
+        juce::String name = "ui_shot";
+
+        if (english)      name << "_en";
+        if (pageShot >= 0) name << "_page" << pageShot;
+        if (expandedShot) name << "_expanded";
+        if (aboutShot)    name << "_about";
+        if (smallShot)    name << "_small";
+        if (lightShot)    name << "_light";
+        if (emptyShot)    name << "_empty";
+        if (snapShot)     name << "_snap";
+
+        const auto output = juce::File::getCurrentWorkingDirectory().getChildFile (name + ".png");
 
         juce::PNGImageFormat png;
+
+        {
+            juce::File copy (juce::File ("/tmp").getChildFile ("uishot_" + name + ".png"));
+            copy.deleteFile();
+
+            if (auto s = std::unique_ptr<juce::FileOutputStream> (copy.createOutputStream()))
+                png.writeImageToStream (image, *s);
+        }
 
         if (auto stream = std::unique_ptr<juce::FileOutputStream> (output.createOutputStream()))
             png.writeImageToStream (image, *stream);
@@ -172,6 +196,10 @@ private:
     bool english = false;
     bool aboutShot = false;
     bool expandedShot = false;
+    bool smallShot = false;
+    bool lightShot = false;
+    bool emptyShot = false;
+    bool snapShot = false;
     int pageShot = -1;
 };
 

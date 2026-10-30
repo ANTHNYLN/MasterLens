@@ -1,0 +1,118 @@
+#include "Modules.h"
+
+namespace ml
+{
+void DetailArea::paintTruePeak (juce::Graphics& g)
+{
+    auto area = contentArea().withTrimmedTop (30);
+    const auto& s = state.stats;
+
+    auto top = area.removeFromTop (juce::jmin (136, area.getHeight() / 2));
+
+    g.setColour (theme::cardAlt);
+    g.fillRoundedRectangle (top.toFloat(), tokens::radiusCard);
+    g.setColour (theme::border);
+    g.drawRoundedRectangle (top.toFloat().reduced (0.5f), tokens::radiusCard, 1.0f);
+
+    auto inner = top.reduced (16, 12);
+    auto left = inner.removeFromLeft (juce::jmin (330, inner.getWidth() / 2));
+
+    const bool valid = s.truePeakDb > -70.0f;
+    const auto colour = ! valid ? theme::textFaint
+                      : (s.truePeakDb > state.ceiling ? theme::bad
+                      : (s.truePeakDb > state.ceiling - 0.6f ? theme::warn : theme::good));
+
+    g.setColour (theme::textDim);
+    g.setFont (uiFont (tokens::label));
+    g.drawText (T ("最大值 dBTP", "MAXIMUM dBTP"), left.removeFromTop (16),
+                juce::Justification::centredLeft);
+
+    g.setColour (colour);
+    g.setFont (monoFont (tokens::display, true));
+    g.drawText (valid ? num (s.truePeakDb) : noValue(), left.removeFromTop (48),
+                juce::Justification::centredLeft);
+
+    g.setColour (theme::textFaint);
+    g.setFont (monoFont (tokens::unit));
+    g.drawText ("dBTP", left, juce::Justification::topLeft);
+
+    const auto row = [&] (const juce::String& key, const juce::String& value)
+    {
+        auto r = inner.removeFromTop (26);
+
+        g.setColour (theme::textFaint);
+        g.setFont (uiFont (tokens::aux));
+        g.drawText (key, r.removeFromLeft (150), juce::Justification::centredLeft);
+
+        g.setColour (theme::text);
+        g.setFont (monoFont (12.0f, true));
+        g.drawText (value, r, juce::Justification::centredLeft);
+    };
+
+    row (T ("上限", "Ceiling"), num (state.ceiling) + " dBTP");
+    row (T ("最大值位置", "Maximum at"),
+         s.truePeakMaxTime > 0.01f ? fmtTime (s.truePeakMaxTime) : noValue());
+    row (T ("跨采样过载", "Inter-sample overs"), "OVERS " + juce::String (s.oversCount));
+    row (T ("过采样倍数", "Oversampling"), juce::String ("4") + times());
+
+    area.removeFromTop (tokens::gap);
+
+    g.setColour (theme::textDim);
+    g.setFont (uiFont (tokens::aux));
+    g.drawText (T ("超限事件（时间戳 / 超出量）", "Over-limit events (time / overshoot)"),
+                area.removeFromTop (20), juce::Justification::centredLeft);
+
+    if (state.tpEvents.empty())
+    {
+        g.setColour (theme::good);
+        g.setFont (uiFont (tokens::label));
+        g.drawText (T ("未检出真峰值超限", "No true-peak overs detected"),
+                    area.removeFromTop (24), juce::Justification::centredLeft);
+    }
+    else
+    {
+        int shown = 0;
+
+        for (auto it = state.tpEvents.rbegin(); it != state.tpEvents.rend() && shown < 10; ++it, ++shown)
+        {
+            auto r = area.removeFromTop (22);
+
+            g.setColour (theme::bad);
+            g.setFont (monoFont (11.5f, true));
+            g.drawText (fmtTime (it->time), r.removeFromLeft (72), juce::Justification::centredLeft);
+
+            g.setColour (theme::text);
+            g.setFont (monoFont (11.5f));
+            g.drawText (num (it->overshootDb) + " dB", r, juce::Justification::centredLeft);
+        }
+    }
+
+    // ---- method note ---------------------------------------------------------
+    if (area.getHeight() >= 92)
+    {
+        auto card = area.removeFromTop (juce::jmin (92, area.getHeight()));
+        card = card.withTrimmedTop (tokens::gap);
+
+        g.setColour (theme::cardAlt);
+        g.fillRoundedRectangle (card.toFloat(), tokens::radiusCard);
+        g.setColour (theme::border);
+        g.drawRoundedRectangle (card.toFloat().reduced (0.5f), tokens::radiusCard, 1.0f);
+
+        auto inner = card.reduced (14, 10);
+
+        g.setColour (theme::textDim);
+        g.setFont (uiFont (tokens::aux));
+        g.drawText (T ("检测方式与规则", "Method and rules"), inner.removeFromTop (16),
+                    juce::Justification::centredLeft);
+
+        g.setColour (theme::textFaint);
+        g.setFont (uiFont (tokens::unit));
+        g.drawFittedText (T ("4× 过采样线性插值（48 kHz → 192 kHz），阈值 = 顶部设定的真峰值上限；"
+                             "超限事件写入时间线并出现在导出报告中，判断规则全部可追溯到实际读数。",
+                             "4x oversampled linear interpolation (48 kHz -> 192 kHz); the threshold is the "
+                             "true-peak ceiling above. Overs are written to the timeline and the exported "
+                             "report - every rule traces back to a measured value."),
+                          inner, juce::Justification::topLeft, 3);
+    }
+}
+} // namespace ml

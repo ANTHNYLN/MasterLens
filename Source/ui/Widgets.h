@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <array>
 #include <functional>
 #include <set>
 #include <vector>
@@ -14,64 +15,74 @@
 
 namespace ml
 {
-/** White rounded card with a title row. */
-class Card : public juce::Component
+/** Two saved readings for before / after comparison. */
+struct Snapshot
 {
-public:
-    Card (juce::String titleText = {}, juce::String subtitleText = {});
-
-    void setAccent (juce::Colour c) { accent = c; repaint(); }
-    void setTitle (juce::String s) { title = std::move (s); repaint(); }
-    void setSubtitle (juce::String s) { subtitle = std::move (s); repaint(); }
-
-    juce::Rectangle<int> contentArea() const;
-
-    void paint (juce::Graphics&) override;
-    void resized() override;
-
-    std::function<void (juce::Rectangle<int>)> onLayout;
-
-private:
-    juce::String title, subtitle;
-    juce::Colour accent { theme::accent };
-
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Card)
+    bool valid = false;
+    StatsSnapshot stats;
+    double capturedAt = 0.0;
 };
 
+/** One deterministic check on the diagnostics page. */
+struct CheckResult
+{
+    juce::String label;
+    juce::String value;
+    Severity severity = Severity::good;
+    juce::String hint;
+};
+
+/** Builds the full checklist (passed and failed) from the current readings.
+
+    Thresholds are the same static numbers the advisor and the delivery table
+    use, so the list can always be traced back to a written rule.
+*/
+std::vector<CheckResult> buildChecklist (const StatsSnapshot& stats,
+                                         float targetLufs,
+                                         float ceilingDb,
+                                         const std::vector<float>& bandDevs);
+
+/** Centred "play audio to start measuring" illustration + copy. */
+void paintEmptyState (juce::Graphics&, juce::Rectangle<int> area);
+
 //==============================================================================
-/** 2x2 tiles: integrated loudness, true peak, LRA, PLR. */
-class LoudnessTiles : public juce::Component
+/** 4 metric cards (I / TP / LRA / PLR), fixed 104 px, 4-up or 2x2. */
+class MetricGrid : public juce::Component
 {
 public:
-    void setValues (const StatsSnapshot& s, float targetLufs, float ceilingDb);
+    void setValues (const StatsSnapshot& s, float targetLufs, float ceilingDb, bool signal);
+
     void paint (juce::Graphics&) override;
 
 private:
-    void paintTile (juce::Graphics&, juce::Rectangle<int>, const juce::String& label,
+    void paintCard (juce::Graphics&, juce::Rectangle<int>, const juce::String& title,
                     const juce::String& value, const juce::String& unit,
-                    const juce::String& hint, juce::Colour valueColour);
+                    const juce::String& hint, const juce::String& pill, juce::Colour colour);
 
     StatsSnapshot stats;
     float target = -14.0f;
     float ceiling = -1.0f;
+    bool hasSignal = false;
 };
 
-/** Momentary / short-term horizontal bars. */
-class LevelBars : public juce::Component
+//==============================================================================
+/** M / S horizontal meters with ticks, a -14 target line and tabular readouts. */
+class LevelMeters : public juce::Component
 {
 public:
     void setValues (const StatsSnapshot& s, float targetLufs);
     void paint (juce::Graphics&) override;
 
 private:
-    void paintBar (juce::Graphics&, juce::Rectangle<int>, const juce::String& label,
-                   float valueDb, juce::Colour colour);
+    void paintRow (juce::Graphics&, juce::Rectangle<int>, const juce::String& label,
+                   const juce::String& windowText, float valueDb, juce::Colour colour);
 
     StatsSnapshot stats;
     float target = -14.0f;
 };
 
-/** Correlation, stereo width, low-band mono-ness and artefact counters. */
+//==============================================================================
+/** Correlation / width / low-end mono, three bands and the artefact counters. */
 class StereoMeters : public juce::Component
 {
 public:
@@ -87,11 +98,7 @@ private:
 };
 
 //==============================================================================
-/** Real-time log-frequency spectrum with peak hold.
-
-    The grid, axis labels and any static text are cached in an off-screen image
-    and only rebuilt on resize; each frame only the curve is drawn.
-*/
+/** Real-time log-frequency spectrum with peak hold (grid cached offscreen). */
 class SpectrumDisplay : public juce::Component
 {
 public:
@@ -101,6 +108,7 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override { backgroundDirty = true; }
     void refreshLanguage() { backgroundDirty = true; repaint(); }
+    void invalidateBackground() { backgroundDirty = true; repaint(); }
 
 private:
     void ensureBackground();
@@ -109,6 +117,7 @@ private:
     const SpectrumAnalyzer* analyzer = nullptr;
     juce::Image background;
     bool backgroundDirty = true;
+    int cachedThemeRevision = -1;
 };
 
 /** Ten band tonal balance deviation bars (pink-noise / octave reference). */
@@ -121,6 +130,7 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override { backgroundDirty = true; }
     void refreshLanguage() { backgroundDirty = true; repaint(); }
+    void invalidateBackground() { backgroundDirty = true; repaint(); }
 
 private:
     void ensureBackground();
@@ -128,26 +138,45 @@ private:
     std::vector<float> devs;
     juce::Image background;
     bool backgroundDirty = true;
+    int cachedThemeRevision = -1;
 };
 
-/** Short-term loudness history with the target band. */
+//==============================================================================
+/** Short-term loudness history: one relative time axis, window chips, hover. */
 class HistoryGraph : public juce::Component
 {
 public:
     HistoryGraph();
 
     void setData (std::vector<float> curve, float targetLufs);
+    void setBand (float lraValue) { bandLra = lraValue; repaint(); }
     void paint (juce::Graphics&) override;
     void resized() override { backgroundDirty = true; }
     void refreshLanguage() { backgroundDirty = true; repaint(); }
+    void invalidateBackground() { backgroundDirty = true; repaint(); }
+
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseMove (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override;
+
+    enum class Range { oneSecond = 0, tenSeconds = 1, oneMinute = 2, whole = 3 };
+    Range getRange() const noexcept { return range; }
 
 private:
-    void ensureBackground();
+    void paintPlot (juce::Graphics&);
+    void paintOverlay (juce::Graphics&);
+    juce::Rectangle<int> plotArea() const;
+    std::array<juce::Rectangle<int>, 4> chipBounds() const;
+    int pointsForRange() const;
 
     std::vector<float> data;
     float target = -14.0f;
+    float bandLra = 0.0f;
+    Range range = Range::oneMinute;
     juce::Image background;
     bool backgroundDirty = true;
+    int cachedThemeRevision = -1;
+    int hoverX = -1;
 };
 
 //==============================================================================
@@ -161,6 +190,9 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+
+    /** Snapshot helper: opens the first row so the expanded layout can be verified. */
+    void expandFirstForSnapshot();
 
 private:
     class Content : public juce::Component
@@ -178,13 +210,14 @@ private:
 
         std::function<void (const juce::String&)> onRowClicked;
 
-        static constexpr int collapsedHeight = 46;
-        static constexpr int detailExtra = 58;
+        static constexpr int collapsedHeight = 48;
+        static constexpr int detailExtra = 60;
 
     private:
         std::vector<Issue> items;
         std::vector<int> rowHeights;
         const std::set<juce::String>* expandedIds = nullptr;
+        int cachedThemeRevision = -1;
     };
 
     Content content;
@@ -192,14 +225,35 @@ private:
     std::set<juce::String> expanded;
     std::vector<Issue> viewIssuesCache;
     juce::String lastSignature;
-
-public:
-    /** Snapshot helper: opens the first row so the expanded layout can be verified. */
-    void expandFirstForSnapshot();
 };
 
 //==============================================================================
-/** Modal-ish "About" overlay: product, developer, organisation, standards. */
+/** A / B comparison chip. Left click captures or recalls, right click clears. */
+class SnapshotChip : public juce::Component,
+                     public juce::SettableTooltipClient
+{
+public:
+    explicit SnapshotChip (juce::String letterText);
+
+    void setState (bool hasData, bool active);
+    bool hasData() const noexcept { return filled; }
+
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    juce::String getTooltip() override;
+
+    std::function<void()> onClick;
+    std::function<void()> onClear;
+
+private:
+    juce::String letter;
+    bool filled = false;
+    bool active = false;
+    bool mouseOver = false;
+};
+
+//==============================================================================
+/** Modal "About" overlay: product, developer, organisation, standards. */
 class AboutPanel : public juce::Component
 {
 public:
@@ -216,3 +270,4 @@ private:
     juce::TextButton closeButton;
 };
 } // namespace ml
+
