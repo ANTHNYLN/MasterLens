@@ -3,7 +3,7 @@
 **母带响度检查 · 混音质量诊断 · 实时频谱**  
 macOS / Windows 音频总线插件（VST3 / AU / 独立版），C++17 + JUCE 8。
 
-*Bilingual (中文 / English) mastering loudness meter and mix-quality inspector for macOS — VST3, AU and standalone, built with C++17 and JUCE 8. Zero latency, zero colouring: it only measures.*
+*Bilingual (中文 / English) mastering loudness meter and mix-quality inspector for macOS and Windows — VST3, AU and standalone, built with C++17 and JUCE 8. Zero latency, zero colouring: it only measures.*
 
 ![MasterLens 界面](docs/screenshot.png)
 
