@@ -1,6 +1,8 @@
 #include "Modules.h"
 #include "../Delivery.h"
 
+#include <utility>
+
 namespace ml
 {
 //==============================================================================
@@ -97,17 +99,20 @@ void DetailArea::setIssues (std::vector<Issue> items)
 
 void DetailArea::setReferenceInfo (bool hasRef, const juce::String& status)
 {
+    if (refReady == hasRef && refStatus == status)
+        return;
+
     refReady = hasRef;
     refStatus = status;
     repaint();
 }
 
-void DetailArea::setState (const UiState& s)
+void DetailArea::setState (UiState s)
 {
-    state = s;
+    state = std::move (s);
     ++tick;
 
-    const bool empty = ! s.stats.hasSignal;
+    const bool empty = ! state.stats.hasSignal;
 
     if (empty != emptyMode)
     {
@@ -124,30 +129,33 @@ void DetailArea::setState (const UiState& s)
         case PageId::loudness:
             if ((tick % 2) == 0)
             {
-                tiles.setValues (s.stats, s.target, s.ceiling, s.stats.hasSignal);
-                levelBars.setValues (s.stats, s.target);
+                tiles.setValues (state.stats, state.target, state.ceiling, state.stats.hasSignal);
+                levelBars.setValues (state.stats, state.target);
             }
             break;
 
         case PageId::spectrum:
-            if (s.analyzer != nullptr)
-                spectrum.setAnalyzer (s.analyzer);
+            if (state.analyzer != nullptr)
+                spectrum.setAnalyzer (state.analyzer);
 
             spectrum.repaint();
 
             if ((tick % 2) == 0)
-                bands.setDeviations (s.bandDevs);
+                bands.setDeviations (state.bandDevs);
             break;
 
         case PageId::stereo:
             if ((tick % 2) == 0)
-                meters.setValues (s.stats);
+                meters.setValues (state.stats);
             break;
 
         case PageId::delivery:
         case PageId::signal:
         case PageId::diagnostics:
         case PageId::timeline:
+            if ((tick % 6) == 0)
+                repaint();
+            break;
         case PageId::truePeak:
             if ((tick % 2) == 0)
                 repaint();

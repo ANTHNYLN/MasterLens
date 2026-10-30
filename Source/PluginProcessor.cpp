@@ -84,18 +84,12 @@ void MasterLensAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     // mono sum for the visualiser
     if (numChannels >= 2)
     {
-        const float* l = buffer.getReadPointer (0);
-        const float* r = buffer.getReadPointer (1);
-
-        for (int n = 0; n < numSamples; ++n)
-            spectrumRing.write (0.5f * (l[n] + r[n]));
+        spectrumRing.writeStereoBlock (buffer.getReadPointer (0),
+                                       buffer.getReadPointer (1), numSamples);
     }
     else
     {
-        const float* l = buffer.getReadPointer (0);
-
-        for (int n = 0; n < numSamples; ++n)
-            spectrumRing.write (l[n]);
+        spectrumRing.writeBlock (buffer.getReadPointer (0), numSamples);
     }
 
     engine.process (buffer, stats, numSamples);

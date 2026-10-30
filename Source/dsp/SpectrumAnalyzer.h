@@ -38,12 +38,40 @@ public:
     {
         const int i = index.load (std::memory_order_relaxed);
         data[(size_t) i] = v;
-        index.store ((i + 1) & mask, std::memory_order_relaxed);
+        index.store ((i + 1) & mask, std::memory_order_release);
+    }
+
+    /** Mono block write: one atomic load/store per block instead of per sample. */
+    void writeBlock (const float* source, int n) noexcept
+    {
+        int i = index.load (std::memory_order_relaxed);
+
+        for (int k = 0; k < n; ++k)
+        {
+            data[(size_t) i] = source[k];
+            i = (i + 1) & mask;
+        }
+
+        index.store (i, std::memory_order_release);
+    }
+
+    /** Stereo block write, storing the mono sum used by the analyser. */
+    void writeStereoBlock (const float* left, const float* right, int n) noexcept
+    {
+        int i = index.load (std::memory_order_relaxed);
+
+        for (int k = 0; k < n; ++k)
+        {
+            data[(size_t) i] = 0.5f * (left[k] + right[k]);
+            i = (i + 1) & mask;
+        }
+
+        index.store (i, std::memory_order_release);
     }
 
     void readLatest (float* dest, int n) const noexcept
     {
-        const int idx = index.load (std::memory_order_relaxed);
+        const int idx = index.load (std::memory_order_acquire);
         const int size = mask + 1;
 
         for (int i = 0; i < n; ++i)
@@ -132,6 +160,7 @@ private:
     void computeResonances();
     void updateAverageSpectrum();
     void buildDisplaySpectrum();
+    void computeSmoothingWindows();
     float interpolateBins (const std::vector<float>& data, double hz) const noexcept;
 
     std::unique_ptr<juce::dsp::FFT> fft;
@@ -147,6 +176,9 @@ private:
     std::vector<float> peakHold;
     std::vector<float> displayMagnitudes;
     std::vector<float> displayPeak;
+    std::vector<float> instantPower;
+    std::vector<int> smoothLo;
+    std::vector<int> smoothHi;
     std::vector<double> powerPrefix;
     std::vector<float> longTermPower;
     std::vector<float> averageDb;

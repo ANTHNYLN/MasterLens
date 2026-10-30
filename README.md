@@ -20,13 +20,35 @@ macOS / Windows 音频总线插件（VST3 / AU / 独立版），C++17 + JUCE 8�
 - **Platform normalisation**: eight destinations modelled as they behave — gain applied, predicted true peak before and after the service limiter, how much peak reduction the service has to perform, and how much of your limiting is thrown away. Compare every result with imported reference tracks (LUFS, LRA, PLR, low-side, sub share).
 - **Signal integrity**: harmonic / intermodulation energy over a local spectral floor, flat-top (hard-clip) density, aliasing risk with top-octave flatness, sub-bass build-up, transient preservation, true mono-fold loss and mid-masking risk — plus a correlation layer that merges simultaneous anomalies into one attribution.
 - **Mix diagnostics**: sample clipping, inter-sample overs, click/edit points, DC offset (4 s true mean), channel correlation, stereo width, mono-ness below 120 Hz, and a 10-band tonal balance referenced to pink-noise-per-octave energy — reported as concrete problems (mud, harshness, sibilance, missing air, sub excess, low-mid hole, bright/dark tilt, spectral holes) with bilingual explanations and fixes.
-- **Visuals**: 8192-point FFT at 30 fps with fractional-octave smoothing (1/3 octave below 250 Hz), power-domain averaging, peak-preserving tone restoration and cubic curve drawing; 3-minute short-term loudness history; correlation / width / low-end meters.
+- **Visuals**: 8192-point FFT with 20 fps spectrum analysis (30 fps UI/meters) and fractional-octave smoothing (1/3 octave below 250 Hz), power-domain averaging, peak-preserving tone restoration and cubic curve drawing; 3-minute short-term loudness history; correlation / width / low-end meters.
 - **UI**: dark professional theme (light included), 100 / 125 / 150 / 175 / 200 % interface zoom that scales type, rows and the window together, bilingual Chinese/English (stored in plug-in state), keyboard shortcuts, A/B snapshot compare, exportable TXT / JSON / CSV report.
 - **Targets**: 36 static delivery references — 8 platform/broadcast specs (Spotify, Apple Music, YouTube, Tidal, podcast, audiobook, EBU R128) plus 28 genre references (club/EDM, hip-hop, rock, metal, pop, folk, jazz, classical, film score…), each carrying target LUFS, dBTP ceiling and a recommended LRA window. Picking one sets both target parameters; "Custom" leaves them manual.
-- **Verified**: `auval` passes, 42 offline DSP assertions pass (incl. −23.00 LUFS R128 calibration, mono-fold loss, sub-share, flat-top and defect-detector checks), ~0.45 % of one core at 48 kHz stereo.
+- **Verified**: `auval` passes, 42 offline DSP assertions pass (incl. −23.00 LUFS R128 calibration, mono-fold loss, sub-share, flat-top and defect-detector checks), ~0.4 % of one core at 48 kHz stereo. The 1.4.3 UI benchmark measures ~1.2 % (loudness page) / ~1.7 % (spectrum page) of one core instead of ~6.5 %.
 - **Install**: open the DMG, run `安装 Install.command`, restart the DAW, insert on the master bus.
 
 Build: `./scripts/make_dmg.sh` (universal binary, ad-hoc signed).
+
+---
+
+## 1.4.3 更新
+
+- **性能专项（本版唯一目标）**：保持测量与界面功能不变，只降低占用。同一台机器、同一离屏基准：
+  - 主界面（响度页）UI 线程：约 **6.5 % → 1.2 %** 单核（约 **5×** 降低）
+  - 频谱页：约 **1.7 %** 单核（20 fps 频谱）
+  - 信号健康页：约 **1.15 %** 单核
+  - DSP / 音频线程：约 **0.4 %** 单核（0.30–0.50 % 随负载波动）；频谱环形缓冲的每采样原子操作改为每块一次
+- **频谱显示路径重写**：
+  - 倍频程平滑窗口（1/3、1/6、1/12 oct）在 `prepare()` 中**预计算**，不再每帧 `pow()` / `floor()` 4097 次。
+  - 直接使用 FFT 的**线性功率**做前缀和，去掉 dB→power 的 4097 次 `pow(10, …)`。
+  - 用快速 `log10`（误差 < 0.001 dB）代替逐 bin 的 `log10f`。
+  - 峰值保持改为 3 点局部最大值，去掉每个 bin 的宽窗扫描；删除重复的 3 tap 与二次峰值恢复遍历。
+  - 不再每帧清零 2 × 8192 个 FFT 浮点（FFT 输出会覆盖整个缓冲）。
+- **页面感知分析**：频谱页以 **20 fps** 更新；响度 / 真峰值 / 立体声 / 平台 / 信号 / 诊断 / 时间线只以 **5 fps** 获取频段数据（灯与 Advisor 足够）。Hold 时完全跳过 FFT。
+- **UI 刷新分级**：Advisor / 模块灯 / 问题列表 5 Hz，信号缺陷 2 Hz，时间线标记复制 2 Hz，平台 / 信号 / 诊断页重绘 5 Hz；电平表、频谱与曲线保持高频。
+- **减少拷贝与分配**：`UiState` 改为 move；参考轨状态只在变化时重绘；频段偏差改为单遍扫描（原来 10 × 4097 次比较）。
+- **音频线程**：频谱环形缓冲改为按块写入，每块只做一次 acquire/release（原来每个采样两次原子操作）；单声道输入复用左声道滤波结果，不再重复跑完整滤波链。
+- **基准工具**：`MasterLensUiShot bench pageN` 会离屏运行 5 秒并输出 `UI_BENCH load=…%`，便于以后回归对比。测量方法与前后数据见 `docs/performance-1.4.3.md`。
+- 版本号 **1.4.3**。
 
 ---
 
@@ -166,7 +188,7 @@ Build: `./scripts/make_dmg.sh` (universal binary, ad-hoc signed).
 - **联动归因层**：同一根因下同时越线的层会合并成一条结论（限幅链、低频侧向、掩蔽叠加、混叠+失真）。
 
 ### 可视化
-- 实时频谱：8192 点 FFT、**30 fps**、对数频率轴、功率域分数倍频程平滑
+- 实时频谱：8192 点 FFT、**20 fps 频谱分析 / 30 fps 界面**、对数频率轴、功率域分数倍频程平滑
   （≤250 Hz 1/3 oct、≤4 kHz 1/6 oct、更高 1/12 oct）、峰值保持、三次曲线绘制
 - 短时响度历史：最近 3 分钟，带目标区间与目标线
 - M / S 电平条、相关性 / 宽度 / 低频单声道仪表、失真事件计数
@@ -360,7 +382,7 @@ Source/
     Advisor.*               规则引擎（阈值 + 迟滞 + 信号联动）
     DetailSignal.cpp        信号健康页与联动归因
 Tests/DspTest.cpp           离线自检（42 项断言 + CPU 基准）
-Tools/UiShot.cpp            离屏渲染截图工具（含 logo / 缩放 / 各页面）
+Tools/UiShot.cpp            离屏渲染截图 / bench 基准（logo / 缩放 / 各页面）
 packaging/                  DMG 内的安装 / 卸载脚本、图标与说明
 scripts/make_dmg.sh         通用二进制构建 + 签名 + DMG 打包
 scripts/make_logo_svg.py    从同一几何生成 docs/logo.svg

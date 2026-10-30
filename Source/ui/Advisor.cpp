@@ -518,7 +518,7 @@ void Advisor::apply (const std::vector<Issue>& found, const StatsSnapshot& stats
     for (auto& kv : conditions)
     {
         const auto& c = kv.second;
-        const int required = c.issue.timed ? 1 : 8;
+        const int required = c.issue.timed ? 1 : 3;
 
         if (c.onTicks >= required)
             visible.push_back (c.issue);

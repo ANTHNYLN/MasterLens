@@ -59,7 +59,15 @@ void MasterLensAudioProcessorEditor::timerCallback()
     }
 
     analyzer.setSmoothing (processor.getSmoothing());
-    analyzer.update (processor.spectrumRing);
+
+    // Page-aware analysis rate: the spectrum page gets 20 fps, other pages only
+    // need the band data for the rail/advisor (5 fps). Hold stops FFT work too.
+    const bool spectrumVisible = selectedPage == (int) ml::PageId::spectrum;
+    const bool runAnalyzer = spectrumVisible ? (frameCounter % 3) != 0
+                                             : (frameCounter % 6) == 0;
+
+    if (! frozen && runAnalyzer)
+        analyzer.update (processor.spectrumRing);
 
     if (reference.isReady() && ! analyzer.hasReference())
         analyzer.setReferenceSpectrum (reference.getSpectrumDb());
@@ -94,7 +102,7 @@ void MasterLensAudioProcessorEditor::timerCallback()
     const auto& devs = analyzer.getBandDeviations();
     const auto& resos = analyzer.getResonances();
 
-    if ((frameCounter % 6) == 0)
+    if ((frameCounter % 15) == 0)
         signalDefects = ml::analyseSignalDefects (analyzer.getAverageSpectrumDb(),
                                                   analyzer.getBinHz(), stats);
 
@@ -144,9 +152,14 @@ void MasterLensAudioProcessorEditor::timerCallback()
         us.snapshotDelta[1] = snapshots[1].stats.truePeakDb - snapshots[0].stats.truePeakDb;
     }
 
-    detail.setState (us);
-    detail.setReferenceInfo (analyzer.hasReference(), reference.getStatus());
-    timeline.setMarkers (markers, juce::jmax (30.0, stats.elapsed));
+    detail.setState (std::move (us));
+
+    if ((frameCounter % 6) == 0)
+        detail.setReferenceInfo (analyzer.hasReference(), reference.getStatus());
+
+    if ((frameCounter % 15) == 0)
+        timeline.setMarkers (markers, juce::jmax (30.0, stats.elapsed));
+
     timeline.setPlayhead (stats.elapsed);
 
     if ((frameCounter % 2) == 0)
@@ -156,7 +169,12 @@ void MasterLensAudioProcessorEditor::timerCallback()
             processor.copyShortTermCurve (curve, 1800);
             detail.setHistory (curve, target, stats.lra);
         }
+    }
 
+    // The advisor, issue list and rail only need a few updates per second; the
+    // meters and spectrum keep their full frame rate.
+    if ((frameCounter % 6) == 0)
+    {
         advisor.update (stats, devs, target, ceiling, signalDefects);
         issueCache = advisor.getIssues();
 

@@ -1,5 +1,7 @@
 #include <juce_gui_extra/juce_gui_extra.h>
 
+#include <ctime>
+
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
 #include "Version.h"
@@ -35,6 +37,7 @@ public:
         snapShot = commandLine.containsIgnoreCase ("snap");
         genreShot = commandLine.containsIgnoreCase ("info");
         settingsShot = commandLine.containsIgnoreCase ("settings");
+        benchMode = commandLine.containsIgnoreCase ("bench");
 
         const int outTag = commandLine.indexOfIgnoreCase ("out=");
 
@@ -86,7 +89,25 @@ public:
         if (genreShot)
             editor->showGenreInfoForSnapshot();
 
-        juce::Timer::callAfterDelay (2500, [this] { saveAndQuit(); });
+        if (benchMode)
+        {
+            benchCpuStart = std::clock();
+            benchWallStart = juce::Time::getMillisecondCounterHiRes();
+
+            juce::Timer::callAfterDelay (5000, [this]
+            {
+                const double wall = (juce::Time::getMillisecondCounterHiRes() - benchWallStart) / 1000.0;
+                const double cpu = ((double) (std::clock() - benchCpuStart)) / (double) CLOCKS_PER_SEC;
+
+                std::printf ("UI_BENCH page=%d cpu=%.3f s wall=%.3f s load=%.2f%%\n",
+                             pageShot, cpu, wall, wall > 0.0 ? 100.0 * cpu / wall : 0.0);
+                quit();
+            });
+        }
+        else
+        {
+            juce::Timer::callAfterDelay (2500, [this] { saveAndQuit(); });
+        }
     }
 
     void shutdown() override
@@ -270,6 +291,9 @@ private:
     bool emptyShot = false;
     bool snapShot = false;
     bool settingsShot = false;
+    bool benchMode = false;
+    std::clock_t benchCpuStart = 0;
+    double benchWallStart = 0.0;
     juce::String outSuffix;
     int pageShot = -1;
 };

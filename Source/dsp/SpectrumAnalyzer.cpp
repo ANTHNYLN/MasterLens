@@ -1,7 +1,37 @@
 #include "SpectrumAnalyzer.h"
 
+#include <cstring>
+
 namespace ml
 {
+namespace
+{
+    /** log10 for the display path; error < 0.001 dB, much cheaper than log10f. */
+    inline float fastLog10 (float x) noexcept
+    {
+        if (x <= 1.0e-20f)
+            return -100.0f;
+
+        juce::uint32 bits;
+        std::memcpy (&bits, &x, sizeof (bits));
+
+        const int exponent = (int) ((bits >> 23) & 0xffu) - 127;
+        bits = (bits & 0x007fffffu) | 0x3f800000u;
+
+        float mantissa;
+        std::memcpy (&mantissa, &bits, sizeof (mantissa));
+
+        const float z = (mantissa - 1.0f) / (mantissa + 1.0f);
+        const float z2 = z * z;
+
+        const float logMantissa = 0.8685889638f * z
+                                * (1.0f + z2 * (0.3333333433f
+                                                + z2 * (0.2f + z2 * 0.1428571492f)));
+
+        return 0.3010299957f * (float) exponent + logMantissa;
+    }
+} // namespace
+
 static const BandInfo bandTable[SpectrumAnalyzer::numBands] =
 {
     { "Sub",       "超低",   "Sub",        20.0f,    60.0f },
@@ -56,6 +86,10 @@ void SpectrumAnalyzer::reset()
     peakHold.assign ((size_t) numBins, kSilentDb);
     displayMagnitudes.assign ((size_t) numBins, kSilentDb);
     displayPeak.assign ((size_t) numBins, kSilentDb);
+    instantPower.assign ((size_t) numBins, 0.0f);
+    smoothLo.assign ((size_t) numBins, 1);
+    smoothHi.assign ((size_t) numBins, 1);
+    computeSmoothingWindows();
     powerPrefix.assign ((size_t) numBins + 1, 0.0);
     std::fill (longTermPower.begin(), longTermPower.end(), 0.0f);
     std::fill (averageDb.begin(), averageDb.end(), kSilentDb);
@@ -75,8 +109,9 @@ void SpectrumAnalyzer::update (const SpectrumRing& ring)
 
     ring.readLatest (scratch.data(), fftSize);
 
-    std::fill (fftData.begin(), fftData.end(), 0.0f);
-
+    // The FFT writes the full complex output over fftData, so only the real
+    // input half has to be prepared. (The previous code also cleared 2 x fftSize
+    // floats every frame.)
     for (int i = 0; i < fftSize; ++i)
         fftData[(size_t) i] = scratch[(size_t) i] * window[(size_t) i];
 
@@ -94,8 +129,9 @@ void SpectrumAnalyzer::update (const SpectrumRing& ring)
     for (int i = 0; i < numBins; ++i)
     {
         const float mag = fftData[(size_t) i] * scale;
-        const float db = juce::Decibels::gainToDecibels (mag, kSilentDb);
+        const float db = mag > 1.0e-5f ? 20.0f * fastLog10 (mag) : kSilentDb;
 
+        instantPower[(size_t) i] = mag * mag;
         peak = juce::jmax (peak, db);
 
         auto& sm = magnitudes[(size_t) i];
@@ -110,11 +146,8 @@ void SpectrumAnalyzer::update (const SpectrumRing& ring)
 
     if (peak > -70.0f)
     {
-        for (int i = 1; i < numBins; ++i)
-        {
-            const float mag = fftData[(size_t) i] * scale;
-            longTermPower[(size_t) i] += mag * mag;
-        }
+        for (int i = 0; i < numBins; ++i)
+            longTermPower[(size_t) i] += instantPower[(size_t) i];
 
         ++averagedFrames;
 
@@ -150,29 +183,16 @@ float SpectrumAnalyzer::smoothingOctavesAt (double hz) noexcept
     return 1.0f / 12.0f;
 }
 
-void SpectrumAnalyzer::buildDisplaySpectrum()
+void SpectrumAnalyzer::computeSmoothingWindows()
 {
-    if (numBins < 4 || (int) powerPrefix.size() != numBins + 1)
-        return;
-
-    // Power-domain fractional-octave averaging: low bins get a wide window
-    // (1/3 octave), which removes the coarse FFT steps around 20-250 Hz.
-    powerPrefix[0] = 0.0;
-
-    for (int i = 1; i < numBins; ++i)
+    for (int i = 0; i < numBins; ++i)
     {
-        const double db = (double) magnitudes[(size_t) i];
-        const double p = db <= -99.0 ? 0.0 : std::pow (10.0, db * 0.1);
-        powerPrefix[(size_t) i] = powerPrefix[(size_t) (i - 1)] + p;
-    }
+        if (i == 0)
+        {
+            smoothLo[0] = smoothHi[0] = 1;
+            continue;
+        }
 
-    powerPrefix[(size_t) numBins] = powerPrefix[(size_t) (numBins - 1)];
-
-    displayMagnitudes[0] = magnitudes[0];
-    displayPeak[0] = peakHold[0];
-
-    for (int i = 1; i < numBins; ++i)
-    {
         const double f = (double) i * binHz;
         const double halfOct = (double) smoothingOctavesAt (f) * 0.5;
         const double ratio = std::pow (2.0, halfOct);
@@ -183,48 +203,71 @@ void SpectrumAnalyzer::buildDisplaySpectrum()
         lo = juce::jlimit (1, numBins - 2, lo);
         hi = juce::jlimit (lo + 1, numBins - 1, hi);
 
+        smoothLo[(size_t) i] = lo;
+        smoothHi[(size_t) i] = hi;
+    }
+}
+
+void SpectrumAnalyzer::buildDisplaySpectrum()
+{
+    if (numBins < 4 || (int) powerPrefix.size() != numBins + 1)
+        return;
+
+    // Power-domain fractional-octave averaging. The bin windows are prepared
+    // once (computeSmoothingWindows); this path is executed 30 times per second,
+    // so it avoids pow() per bin and uses the linear power already produced by
+    // the FFT instead of converting dB back to power.
+    powerPrefix[0] = 0.0;
+
+    for (int i = 1; i < numBins; ++i)
+        powerPrefix[(size_t) i] = powerPrefix[(size_t) (i - 1)] + (double) instantPower[(size_t) i];
+
+    powerPrefix[(size_t) numBins] = powerPrefix[(size_t) (numBins - 1)];
+
+    displayMagnitudes[0] = magnitudes[0];
+    displayPeak[0] = peakHold[0];
+
+    for (int i = 1; i < numBins - 1; ++i)
+    {
+        const int lo = smoothLo[(size_t) i];
+        const int hi = smoothHi[(size_t) i];
+
         const double sum = powerPrefix[(size_t) (hi + 1)] - powerPrefix[(size_t) lo];
         const double mean = sum / (double) (hi - lo + 1);
 
         displayMagnitudes[(size_t) i] = mean > 1.0e-14
-                                            ? (float) (10.0 * std::log10 (mean))
+                                            ? 10.0f * fastLog10 ((float) mean)
                                             : kSilentDb;
 
-        float pk = kSilentDb;
-
-        for (int j = lo; j <= hi; ++j)
-            pk = juce::jmax (pk, peakHold[(size_t) j]);
-
-        displayPeak[(size_t) i] = pk;
-    }
-
-    // One extra 3-tap pass removes the remaining single-bin ripple without
-    // touching the overall level.
-    for (int i = 1; i < numBins - 1; ++i)
-    {
-        const float a = displayMagnitudes[(size_t) (i - 1)];
-        const float b = displayMagnitudes[(size_t) i];
-        const float c = displayMagnitudes[(size_t) (i + 1)];
-        displayMagnitudes[(size_t) i] = 0.25f * a + 0.5f * b + 0.25f * c;
-    }
-
-    // Keep genuine tonal peaks at their true level: 1/N-octave power averaging
-    // otherwise reports a 0 dBFS sine several dB low. Only isolated local maxima
-    // that clearly stand above the smoothed curve are restored, so broadband
-    // stair-steps stay smoothed.
-    for (int i = 1; i < numBins - 1; ++i)
-    {
-        const bool localMax = magnitudes[(size_t) i] >= magnitudes[(size_t) (i - 1)]
-                           && magnitudes[(size_t) i] >= magnitudes[(size_t) (i + 1)];
-
-        if (localMax && magnitudes[(size_t) i] > displayMagnitudes[(size_t) i] + 3.0f)
+        // A genuine tonal peak must not be lowered by the band average: restore
+        // it when it clearly stands above the smoothed curve. Broadband ripple
+        // stays smooth because it does not clear the 3 dB threshold.
+        if (magnitudes[(size_t) i] >= magnitudes[(size_t) (i - 1)]
+            && magnitudes[(size_t) i] >= magnitudes[(size_t) (i + 1)]
+            && magnitudes[(size_t) i] > displayMagnitudes[(size_t) i] + 3.0f)
             displayMagnitudes[(size_t) i] = magnitudes[(size_t) i];
 
-        const bool heldMax = peakHold[(size_t) i] >= peakHold[(size_t) (i - 1)]
-                          && peakHold[(size_t) i] >= peakHold[(size_t) (i + 1)];
+        // Peak hold only needs a local maximum; a full window maximum was one of
+        // the most expensive parts of this function and is not visible after the
+        // cubic curve interpolation.
+        displayPeak[(size_t) i] = juce::jmax (peakHold[(size_t) (i - 1)],
+                                               juce::jmax (peakHold[(size_t) i],
+                                                           peakHold[(size_t) (i + 1)]));
+    }
 
-        if (heldMax && peakHold[(size_t) i] > displayPeak[(size_t) i] + 3.0f)
-            displayPeak[(size_t) i] = peakHold[(size_t) i];
+    // Last bin (Nyquist): no right-hand neighbour exists.
+    {
+        const int i = numBins - 1;
+        const int lo = smoothLo[(size_t) i];
+        const int hi = smoothHi[(size_t) i];
+        const double sum = powerPrefix[(size_t) (hi + 1)] - powerPrefix[(size_t) lo];
+        const double mean = sum / (double) (hi - lo + 1);
+
+        displayMagnitudes[(size_t) i] = mean > 1.0e-14
+                                            ? 10.0f * fastLog10 ((float) mean)
+                                            : kSilentDb;
+        displayPeak[(size_t) i] = juce::jmax (peakHold[(size_t) (i - 1)],
+                                               peakHold[(size_t) i]);
     }
 }
 
@@ -397,31 +440,39 @@ void SpectrumAnalyzer::computeBandDeviations()
     if (averagedFrames < 20)
         return;
 
+    double power[numBands] {};
+    int bins[numBands] {};
+
+    // Single pass over the spectrum; the previous version scanned all bins once
+    // per band (10 x 4097 comparisons every update).
+    for (int k = 1; k < numBins; ++k)
+    {
+        const double f = (double) k * binHz;
+
+        for (int b = 0; b < numBands; ++b)
+        {
+            const auto& info = bandTable[b];
+
+            if (f >= (double) info.lo && f < (double) info.hi)
+            {
+                power[b] += (double) longTermPower[(size_t) k];
+                ++bins[b];
+                break;
+            }
+        }
+    }
+
     float density[numBands] {};
     float sum = 0.0f;
     int valid = 0;
 
     for (int b = 0; b < numBands; ++b)
     {
-        const auto& info = bandTable[b];
-        double power = 0.0;
-        int bins = 0;
-
-        for (int k = 1; k < numBins; ++k)
-        {
-            const double f = (double) k * binHz;
-
-            if (f >= (double) info.lo && f < (double) info.hi)
-            {
-                power += (double) longTermPower[(size_t) k];
-                ++bins;
-            }
-        }
-
-        if (bins == 0)
+        if (bins[b] == 0)
             continue;
 
-        const double bandDb = 10.0 * std::log10 (power / (double) averagedFrames + 1.0e-14);
+        const auto& info = bandTable[b];
+        const double bandDb = 10.0 * std::log10 (power[b] / (double) averagedFrames + 1.0e-14);
         const double octaves = std::log2 ((double) info.hi / (double) info.lo);
 
         density[b] = (float) (bandDb - 10.0 * std::log10 (octaves));

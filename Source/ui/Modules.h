@@ -133,7 +133,7 @@ public:
     void setPage (PageId p);
     PageId getPage() const noexcept { return page; }
 
-    void setState (const UiState& s);
+    void setState (UiState s);
     void setIssues (std::vector<Issue> issues);
     void setHistory (const std::vector<float>& curve, float targetLufs, float lra);
     void expandFirstIssueForSnapshot();

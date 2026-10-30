@@ -238,7 +238,7 @@ void AnalysisEngine::process (const juce::AudioBuffer<float>& buffer, Stats& sta
 
         // --- K-weighting (high shelf -> high pass) ---------------------------
         const float kl = kHighPass[0].process (kShelf[0].process (l));
-        const float kr = kHighPass[1].process (kShelf[1].process (r));
+        const float kr = isStereo ? kHighPass[1].process (kShelf[1].process (r)) : kl;
 
         sumWeightedK += isStereo ? (double) kl * kl + (double) kr * kr
                                  : (double) kl * kl;
@@ -267,16 +267,17 @@ void AnalysisEngine::process (const juce::AudioBuffer<float>& buffer, Stats& sta
 
         // --- 3-band split: low (<150 Hz), mid (150 Hz - 2 kHz), high (>2 kHz)
         const float lowL = lowPassB[0].process (lowPassA[0].process (l));
-        const float lowR = lowPassB[1].process (lowPassA[1].process (r));
+        const float lowR = isStereo ? lowPassB[1].process (lowPassA[1].process (r)) : lowL;
 
         const float bandHighPassL = hp150B[0].process (hp150A[0].process (l));
-        const float bandHighPassR = hp150B[1].process (hp150A[1].process (r));
+        const float bandHighPassR = isStereo ? hp150B[1].process (hp150A[1].process (r))
+                                             : bandHighPassL;
 
         const float midL = lp2kB[0].process (lp2kA[0].process (bandHighPassL));
-        const float midR = lp2kB[1].process (lp2kA[1].process (bandHighPassR));
+        const float midR = isStereo ? lp2kB[1].process (lp2kA[1].process (bandHighPassR)) : midL;
 
         const float highL = hp2kB[0].process (hp2kA[0].process (bandHighPassL));
-        const float highR = hp2kB[1].process (hp2kA[1].process (bandHighPassR));
+        const float highR = isStereo ? hp2kB[1].process (hp2kA[1].process (bandHighPassR)) : highL;
 
         const auto accumulateBand = [this] (int band, double l, double r)
         {
@@ -295,7 +296,7 @@ void AnalysisEngine::process (const juce::AudioBuffer<float>& buffer, Stats& sta
 
         // --- sub-bass (< 40 Hz) share ----------------------------------------
         const float subL = subLpB[0].process (subLpA[0].process (l));
-        const float subR = subLpB[1].process (subLpA[1].process (r));
+        const float subR = isStereo ? subLpB[1].process (subLpA[1].process (r)) : subL;
         sumSubL2 += (double) subL * subL;
         sumSubR2 += (double) subR * subR;
 
