@@ -23,6 +23,51 @@ void DetailArea::paintTimeline (juce::Graphics& g)
 
     const double total = juce::jmax (1.0, state.stats.elapsed);
 
+    // ---- correlated events (same moment, one attribution) -------------------
+    {
+        const auto merged = mergeMarkerEvents (state.markers);
+
+        if (! merged.empty() && list.getHeight() > 80)
+        {
+            const int cardH = juce::jmin (110, juce::jmax (54, list.getHeight() / 2));
+            auto card = list.removeFromTop (cardH);
+            list.removeFromTop (8);
+
+            g.setColour (theme::cardAlt);
+            g.fillRoundedRectangle (card.toFloat(), tokens::radiusControl);
+            g.setColour (theme::border);
+            g.drawRoundedRectangle (card.toFloat().reduced (0.5f), tokens::radiusControl, 1.0f);
+
+            auto inner = card.reduced (10, 7);
+
+            g.setColour (theme::accent);
+            g.setFont (uiFont (tokens::unit, true));
+            g.drawText (T ("联动事件（同一时间点合并归因）",
+                           "LINKED EVENTS (same moment, one cause)"),
+                        inner.removeFromTop (15), juce::Justification::centredLeft, false);
+
+            int shown = 0;
+
+            for (const auto& e : merged)
+            {
+                if (inner.getHeight() < 17 || shown >= 3)
+                    break;
+
+                auto row = inner.removeFromTop (17);
+                const auto colour = e.severity >= 2 ? theme::bad
+                                  : (e.severity == 1 ? theme::warn : theme::info);
+
+                g.setColour (colour);
+                g.fillEllipse ((float) row.getX(), (float) row.getCentreY() - 3.0f, 6.0f, 6.0f);
+
+                g.setColour (theme::textDim);
+                g.setFont (uiFont (tokens::unit));
+                g.drawText (e.text, row.withTrimmedLeft (12), juce::Justification::centredLeft, true);
+                ++shown;
+            }
+        }
+    }
+
     // ---- event list (above the strip) ---------------------------------------
     g.setColour (theme::textDim);
     g.setFont (uiFont (tokens::aux));

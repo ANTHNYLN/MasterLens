@@ -71,6 +71,7 @@ set(MASTERLENS_SOURCES
     Source/ui/DetailSignal.cpp
     Source/ui/DetailDiag.cpp
     Source/ui/DetailTime.cpp
+    Source/ui/EventMerge.cpp
     Source/ui/Advisor.cpp
     Source/ui/Settings.cpp
 )

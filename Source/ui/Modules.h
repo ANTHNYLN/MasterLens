@@ -22,6 +22,20 @@ struct Marker
     juce::String text;
 };
 
+/** Markers that happen within one short window, merged into one attribution. */
+struct MergedMarkerEvent
+{
+    double start = 0.0;
+    double end = 0.0;
+    int severity = 0;
+    int count = 0;
+    juce::String text;       // "time  ·  root cause  ·  N events"
+};
+
+/** Clusters markers inside ±windowSeconds and attributes the group. */
+std::vector<MergedMarkerEvent> mergeMarkerEvents (const std::vector<Marker>& markers,
+                                                  double windowSeconds = 0.8);
+
 struct UiState
 {
     StatsSnapshot stats;
