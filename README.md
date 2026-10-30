@@ -5,7 +5,7 @@ macOS 音频总线插件（VST3 / AU / 独立版），C++17 + JUCE 8。
 
 *Bilingual (中文 / English) mastering loudness meter and mix-quality inspector for macOS — VST3, AU and standalone, built with C++17 and JUCE 8. Zero latency, zero colouring: it only measures.*
 
-![MasterLens 界面](docs/screenshot.png)
+![MasterLens 界面](docs/screenshot.pg)
 
 插件**不处理任何音频**（零延迟、零染色），只做测量与诊断，插在总线 / 母带链最后一级即可。
 
