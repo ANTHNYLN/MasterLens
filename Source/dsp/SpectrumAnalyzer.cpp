@@ -54,6 +54,9 @@ void SpectrumAnalyzer::reset()
 {
     magnitudes.assign ((size_t) numBins, kSilentDb);
     peakHold.assign ((size_t) numBins, kSilentDb);
+    displayMagnitudes.assign ((size_t) numBins, kSilentDb);
+    displayPeak.assign ((size_t) numBins, kSilentDb);
+    powerPrefix.assign ((size_t) numBins + 1, 0.0);
     std::fill (longTermPower.begin(), longTermPower.end(), 0.0f);
     std::fill (averageDb.begin(), averageDb.end(), kSilentDb);
     std::fill (deviations.begin(), deviations.end(), 0.0f);
@@ -103,6 +106,7 @@ void SpectrumAnalyzer::update (const SpectrumRing& ring)
     }
 
     framePeakDb = peak;
+    buildDisplaySpectrum();
 
     if (peak > -70.0f)
     {
@@ -135,25 +139,135 @@ void SpectrumAnalyzer::updateAverageSpectrum()
         averageDb[(size_t) i] = juce::Decibels::gainToDecibels (longTermPower[(size_t) i] * inv, kSilentDb);
 }
 
-float SpectrumAnalyzer::getMagnitudeAt (double hz) const noexcept
+float SpectrumAnalyzer::smoothingOctavesAt (double hz) noexcept
 {
-    if (magnitudes.empty())
+    if (hz < 250.0)
+        return 1.0f / 3.0f;
+
+    if (hz < 4000.0)
+        return 1.0f / 6.0f;
+
+    return 1.0f / 12.0f;
+}
+
+void SpectrumAnalyzer::buildDisplaySpectrum()
+{
+    if (numBins < 4 || (int) powerPrefix.size() != numBins + 1)
+        return;
+
+    // Power-domain fractional-octave averaging: low bins get a wide window
+    // (1/3 octave), which removes the coarse FFT steps around 20-250 Hz.
+    powerPrefix[0] = 0.0;
+
+    for (int i = 1; i < numBins; ++i)
+    {
+        const double db = (double) magnitudes[(size_t) i];
+        const double p = db <= -99.0 ? 0.0 : std::pow (10.0, db * 0.1);
+        powerPrefix[(size_t) i] = powerPrefix[(size_t) (i - 1)] + p;
+    }
+
+    powerPrefix[(size_t) numBins] = powerPrefix[(size_t) (numBins - 1)];
+
+    displayMagnitudes[0] = magnitudes[0];
+    displayPeak[0] = peakHold[0];
+
+    for (int i = 1; i < numBins; ++i)
+    {
+        const double f = (double) i * binHz;
+        const double halfOct = (double) smoothingOctavesAt (f) * 0.5;
+        const double ratio = std::pow (2.0, halfOct);
+
+        int lo = (int) std::floor (f / ratio / binHz);
+        int hi = (int) std::ceil (f * ratio / binHz);
+
+        lo = juce::jlimit (1, numBins - 2, lo);
+        hi = juce::jlimit (lo + 1, numBins - 1, hi);
+
+        const double sum = powerPrefix[(size_t) (hi + 1)] - powerPrefix[(size_t) lo];
+        const double mean = sum / (double) (hi - lo + 1);
+
+        displayMagnitudes[(size_t) i] = mean > 1.0e-14
+                                            ? (float) (10.0 * std::log10 (mean))
+                                            : kSilentDb;
+
+        float pk = kSilentDb;
+
+        for (int j = lo; j <= hi; ++j)
+            pk = juce::jmax (pk, peakHold[(size_t) j]);
+
+        displayPeak[(size_t) i] = pk;
+    }
+
+    // One extra 3-tap pass removes the remaining single-bin ripple without
+    // touching the overall level.
+    for (int i = 1; i < numBins - 1; ++i)
+    {
+        const float a = displayMagnitudes[(size_t) (i - 1)];
+        const float b = displayMagnitudes[(size_t) i];
+        const float c = displayMagnitudes[(size_t) (i + 1)];
+        displayMagnitudes[(size_t) i] = 0.25f * a + 0.5f * b + 0.25f * c;
+    }
+
+    // Keep genuine tonal peaks at their true level: 1/N-octave power averaging
+    // otherwise reports a 0 dBFS sine several dB low. Only isolated local maxima
+    // that clearly stand above the smoothed curve are restored, so broadband
+    // stair-steps stay smoothed.
+    for (int i = 1; i < numBins - 1; ++i)
+    {
+        const bool localMax = magnitudes[(size_t) i] >= magnitudes[(size_t) (i - 1)]
+                           && magnitudes[(size_t) i] >= magnitudes[(size_t) (i + 1)];
+
+        if (localMax && magnitudes[(size_t) i] > displayMagnitudes[(size_t) i] + 3.0f)
+            displayMagnitudes[(size_t) i] = magnitudes[(size_t) i];
+
+        const bool heldMax = peakHold[(size_t) i] >= peakHold[(size_t) (i - 1)]
+                          && peakHold[(size_t) i] >= peakHold[(size_t) (i + 1)];
+
+        if (heldMax && peakHold[(size_t) i] > displayPeak[(size_t) i] + 3.0f)
+            displayPeak[(size_t) i] = peakHold[(size_t) i];
+    }
+}
+
+float SpectrumAnalyzer::interpolateBins (const std::vector<float>& data, double hz) const noexcept
+{
+    if (data.empty())
         return kSilentDb;
 
     const double bin = hz / binHz;
 
     if (bin <= 1.0)
-        return magnitudes[1];
+        return data[1];
 
     if (bin >= (double) (numBins - 2))
-        return magnitudes[(size_t) (numBins - 1)];
+        return data[(size_t) (numBins - 1)];
 
-    // Linear interpolation between the two neighbouring bins removes the
-    // staircase look of a log-frequency plot with few low-frequency bins.
-    const int i0 = (int) std::floor (bin);
-    const float t = (float) (bin - (double) i0);
+    const int i = (int) std::floor (bin);
+    const float t = (float) (bin - (double) i);
 
-    return magnitudes[(size_t) i0] * (1.0f - t) + magnitudes[(size_t) (i0 + 1)] * t;
+    const float p0 = data[(size_t) juce::jmax (0, i - 1)];
+    const float p1 = data[(size_t) i];
+    const float p2 = data[(size_t) (i + 1)];
+    const float p3 = data[(size_t) juce::jmin (numBins - 1, i + 2)];
+
+    // Cubic Hermite between p1 and p2, clamped to avoid overshoot on spikes.
+    const float v = 0.5f * ((2.0f * p1)
+                             + (-p0 + p2) * t
+                             + (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t * t
+                             + (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t * t * t);
+
+    const float lo = juce::jmin (p1, p2) - 1.0f;
+    const float hi = juce::jmax (p1, p2) + 1.0f;
+    return juce::jlimit (lo, hi, v);
+}
+
+float SpectrumAnalyzer::getMagnitudeAt (double hz) const noexcept
+{
+    return interpolateBins (displayMagnitudes, hz);
+}
+
+float SpectrumAnalyzer::getPeakAt (double hz) const noexcept
+{
+    return interpolateBins (displayPeak, hz);
 }
 
 float SpectrumAnalyzer::getReferenceDeviationAt (double hz) const noexcept

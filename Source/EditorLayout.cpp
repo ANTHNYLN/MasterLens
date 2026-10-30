@@ -2,10 +2,62 @@
 
 using ml::T;
 
+namespace
+{
+    juce::Rectangle<int> screenWorkArea (juce::Component& c)
+    {
+        const auto& displays = juce::Desktop::getInstance().getDisplays();
+
+        if (auto* d = displays.getDisplayForRect (c.getScreenBounds()))
+            return d->userBounds.toNearestInt();
+
+        if (auto* d = displays.getPrimaryDisplay())
+            return d->userBounds.toNearestInt();
+
+        return { 0, 0, 1440, 900 };
+    }
+} // namespace
+
+//==============================================================================
+juce::Rectangle<int> MasterLensAudioProcessorEditor::baseBounds() const
+{
+    const float s = uiScale > 0.01f ? uiScale : 1.0f;
+
+    return { 0, 0,
+             juce::jmax (1, juce::roundToInt ((float) getWidth() / s)),
+             juce::jmax (1, juce::roundToInt ((float) getHeight() / s)) };
+}
+
+//==============================================================================
+float MasterLensAudioProcessorEditor::computeInitialUiScale() const
+{
+    const auto stored = processor.apvts.state.getProperty ("uiScale");
+
+    if (! stored.isVoid())
+        return juce::jlimit (ml::ui::minScale, ml::ui::maxScale, (float) stored);
+
+    // First launch: pick the largest step whose minimum layout still fits on the
+    // current display. A large monitor therefore opens at 200 %, a laptop at the
+    // biggest size that its screen can actually show.
+    const auto area = screenWorkArea (const_cast<MasterLensAudioProcessorEditor&> (*this));
+    const float availW = (float) area.getWidth() * 0.96f;
+    const float availH = (float) area.getHeight() * 0.96f;
+
+    float chosen = ml::ui::minScale;
+
+    for (float step : ml::ui::scaleSteps)
+        if (900.0f * step <= availW && 620.0f * step <= availH)
+            chosen = step;
+
+    processor.apvts.state.setProperty ("uiScale", chosen, nullptr);
+    return chosen;
+}
+
 //==============================================================================
 void MasterLensAudioProcessorEditor::resized()
 {
-    auto b = getLocalBounds();
+    auto base = baseBounds();
+    auto b = base;
 
     headerArea = b.removeFromTop (56);
     paramArea = b.removeFromTop (72);
@@ -16,6 +68,8 @@ void MasterLensAudioProcessorEditor::resized()
         auto h = headerArea.reduced (16, 12);
 
         languageButton.setBounds (h.removeFromRight (46).withSizeKeepingCentre (46, 28));
+        h.removeFromRight (8);
+        settingsButton.setBounds (h.removeFromRight (64).withSizeKeepingCentre (64, 28));
         h.removeFromRight (8);
         aboutButton.setBounds (h.removeFromRight (58).withSizeKeepingCentre (58, 28));
         h.removeFromRight (8);
@@ -71,11 +125,46 @@ void MasterLensAudioProcessorEditor::resized()
         snapshotA.setBounds (f.removeFromRight (34).withSizeKeepingCentre (34, 28));
     }
 
-    aboutPanel.setBounds (getLocalBounds());
-    genrePanel.setBounds (getLocalBounds());
+    aboutPanel.setBounds (base);
+    genrePanel.setBounds (base);
+    settingsPanel.setBounds (base);
 
-    processor.apvts.state.setProperty ("editorWidth", getWidth(), nullptr);
-    processor.apvts.state.setProperty ("editorHeight", getHeight(), nullptr);
+    // One transform for the whole surface: layout stays in base points, so a
+    // 200 % zoom cannot clip a label.
+    for (auto* child : getChildren())
+        if (child != nullptr)
+            child->setTransform (juce::AffineTransform::scale (uiScale));
+
+    processor.apvts.state.setProperty ("editorWidth", base.getWidth(), nullptr);
+    processor.apvts.state.setProperty ("editorHeight", base.getHeight(), nullptr);
+}
+
+//==============================================================================
+void MasterLensAudioProcessorEditor::setUiScale (float newScale, bool store)
+{
+    newScale = juce::jlimit (ml::ui::minScale, ml::ui::maxScale, newScale);
+
+    if (std::abs (newScale - uiScale) < 0.001f)
+        return;
+
+    const int baseW = juce::jlimit (900, 1900, juce::roundToInt ((float) getWidth() / uiScale));
+    const int baseH = juce::jlimit (620, 1400, juce::roundToInt ((float) getHeight() / uiScale));
+
+    uiScale = newScale;
+    ml::ui::setScale (uiScale);
+
+    if (store)
+        processor.apvts.state.setProperty ("uiScale", uiScale, nullptr);
+
+    setResizeLimits (ml::ui::scaled (900), ml::ui::scaled (620),
+                     ml::ui::scaled (1900), ml::ui::scaled (1400));
+    setSize (ml::ui::scaled (baseW), ml::ui::scaled (baseH));
+
+    settingsPanel.setScale (uiScale);
+    detail.invalidateDisplays();
+    rail.repaint();
+    timeline.repaint();
+    repaint();
 }
 
 //==============================================================================
@@ -96,6 +185,7 @@ void MasterLensAudioProcessorEditor::applyTheme()
     detail.invalidateDisplays();
     rail.repaint();
     timeline.repaint();
+    settingsPanel.repaint();
 
     updateTexts();
     repaint();

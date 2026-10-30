@@ -1,5 +1,6 @@
 #include "Widgets.h"
 #include "../Version.h"
+#include "Logo.h"
 
 namespace ml
 {
@@ -78,8 +79,8 @@ juce::String SnapshotChip::getTooltip()
 //==============================================================================
 static juce::Rectangle<int> aboutCardBounds (juce::Rectangle<int> area)
 {
-    const int w = juce::jmin (520, area.getWidth() - 64);
-    const int h = juce::jmin (430, area.getHeight() - 64);
+    const int w = juce::jmin (540, area.getWidth() - 64);
+    const int h = juce::jmin (470, area.getHeight() - 64);
 
     return area.withSizeKeepingCentre (w, h);
 }
@@ -118,35 +119,31 @@ void AboutPanel::paint (juce::Graphics& g)
 
     auto inner = card.reduced (28.0f, 24.0f).toNearestInt();
 
-    auto logo = inner.removeFromTop (48).removeFromLeft (48).toFloat();
+    auto logo = inner.removeFromTop (64).removeFromLeft (64).toFloat();
 
-    g.setGradientFill (juce::ColourGradient (theme::accent, logo.getX(), logo.getY(),
-                                             theme::violet, logo.getRight(), logo.getBottom(), false));
-    g.fillRoundedRectangle (logo, 12.0f);
-
-    const float bars[] { 0.34f, 0.66f, 0.92f, 0.5f };
-    float bx = logo.getX() + 9.0f;
-
-    for (float bh : bars)
-    {
-        const float hgt = logo.getHeight() * 0.44f * bh + 4.0f;
-        g.setColour (juce::Colours::white.withAlpha (0.92f));
-        g.fillRoundedRectangle (bx, logo.getBottom() - 10.0f - hgt, 4.5f, hgt, 2.0f);
-        bx += 8.5f;
-    }
+    paintLogoMark (g, logo);
 
     g.setColour (theme::text);
-    g.setFont (uiFont (20.0f, true));
-    g.drawText (kProductName, (int) logo.getRight() + 14, (int) logo.getY() - 4, 300, 28,
-                juce::Justification::centredLeft);
+    g.setFont (uiFont (22.0f, true));
+    g.drawText (kProductName, (int) logo.getRight() + 16, (int) logo.getY() - 2, 300, 30,
+                juce::Justification::centredLeft, false);
+
+    g.setColour (theme::cyan);
+    g.setFont (uiFont (tokens::label, true));
+    g.drawText (T ("一个 BerryStudio 产品", "A BerryStudio product"),
+                (int) logo.getRight() + 16, (int) logo.getY() + 26, 330, 18,
+                juce::Justification::centredLeft, false);
 
     g.setColour (theme::textDim);
     g.setFont (uiFont (tokens::aux));
-    g.drawText (T ("母带响度与混音质检", "Mastering loudness & mix inspector"),
-                (int) logo.getRight() + 14, (int) logo.getY() + 22, 320, 18,
-                juce::Justification::centredLeft);
+    g.drawText (T ("母带响度 · 平台归一化 · 信号健康", "Loudness · normalisation · signal health"),
+                (int) logo.getRight() + 16, (int) logo.getY() + 44, 360, 18,
+                juce::Justification::centredLeft, false);
 
-    inner.removeFromTop (16);
+    paintBerryWordmark (g, inner.removeFromTop (18), theme::textFaint, 9.0f,
+                        juce::Justification::right);
+
+    inner.removeFromTop (8);
 
     g.setColour (theme::divider);
     g.drawHorizontalLine (inner.getY(), (float) inner.getX(), (float) inner.getRight());

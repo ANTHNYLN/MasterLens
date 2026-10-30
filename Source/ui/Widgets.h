@@ -40,7 +40,8 @@ struct CheckResult
 std::vector<CheckResult> buildChecklist (const StatsSnapshot& stats,
                                          float targetLufs,
                                          float ceilingDb,
-                                         const std::vector<float>& bandDevs);
+                                         const std::vector<float>& bandDevs,
+                                         const SignalDefects& defects = {});
 
 /** Centred "play audio to start measuring" illustration + copy. */
 void paintEmptyState (juce::Graphics&, juce::Rectangle<int> area);
@@ -304,6 +305,37 @@ private:
     int presetIndex = 0;
     bool updating = false;
     juce::String bodyText, factsText;
+};
+
+//==============================================================================
+/** Interface settings: the whole editor is zoomed as one surface (100 - 200 %).
+
+    Zooming scales glyphs, row heights, cards and the window together, so the
+    layout keeps its proportions and no label is ever clipped by a font change.
+*/
+class SettingsPanel : public juce::Component
+{
+public:
+    SettingsPanel();
+
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void mouseDown (const juce::MouseEvent&) override;
+
+    void setVisibleAndFocus (bool shouldBeVisible);
+    void setScale (float newScale);
+    float getScale() const noexcept { return scale; }
+    void refreshTexts();
+
+    std::function<void (float)> onScaleChanged;
+    std::function<void()> onClose;
+
+private:
+    juce::Rectangle<int> cardBounds() const;
+
+    float scale = 1.0f;
+    std::array<juce::TextButton, 5> scaleButtons;
+    juce::TextButton closeButton;
 };
 } // namespace ml
 

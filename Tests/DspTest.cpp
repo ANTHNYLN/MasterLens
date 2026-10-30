@@ -4,6 +4,7 @@
 
 #include "dsp/AnalysisEngine.h"
 #include "dsp/SpectrumAnalyzer.h"
+#include "dsp/DefectAnalyzer.h"
 #include "Delivery.h"
 
 static int failures = 0;
@@ -267,7 +268,9 @@ int main()
 
         s.truePeakDb = -1.0f;
         const auto over = ml::evaluate (s, ml::platform (0));
-        check ("delivery predicted TP (over)", over.predictedTp, 1.0, 0.001);
+        check ("delivery raw TP (over)", over.predictedTpRaw, 1.0, 0.001);
+        check ("delivery predicted TP (limiter)", over.predictedTp, -1.0, 0.001);
+        check ("delivery service limiting", over.limitedDb, 2.0, 0.001);
         check ("delivery state over", (double) over.state, (double) ml::DeliveryState::over, 0.0);
 
         s.integrated = -100.0f;
@@ -276,11 +279,152 @@ int main()
         check ("delivery silent gain", silent.gainDb, 0.0, 0.0);
         check ("delivery silent state", (double) silent.state, (double) ml::DeliveryState::ok, 0.0);
 
-        check ("platform table size", (double) ml::numPlatforms, 6.0, 0.0);
+        check ("platform table size", (double) ml::numPlatforms, 8.0, 0.0);
     }
 
     // ---------------------------------------------------------------------
-    // 7) CPU benchmark (stereo, 48 kHz, 512-sample blocks)
+    // 7) Signal integrity: mono fold loss, sub share, flat-top density
+    // ---------------------------------------------------------------------
+    {
+        // anti-phase channels cancel completely when folded to mono
+        ml::Stats stats;
+        ml::AnalysisEngine engine;
+        engine.prepare (sr, 2);
+
+        juce::AudioBuffer<float> buffer (2, blockSize);
+        double phase = 0.0;
+
+        for (int b = 0; b < (int) (sr * 6.0 / blockSize); ++b)
+        {
+            for (int n = 0; n < blockSize; ++n)
+            {
+                const float v = (float) (0.25 * std::sin (phase));
+                buffer.setSample (0, n, v);
+                buffer.setSample (1, n, -v);
+                phase += 2.0 * juce::MathConstants<double>::pi * 220.0 / sr;
+            }
+
+            engine.process (buffer, stats, blockSize);
+        }
+
+        const auto s = ml::snapshot (stats);
+        check ("mono fold loss (anti-phase)", s.monoFoldLossDb, 30.0, 3.0);
+        check ("mono retained % (anti-phase)", s.monoRetainPct, 0.0, 3.0);
+        check ("correlation (anti-phase)", s.correlation, -1.0, 0.01);
+    }
+
+    {
+        // 30 Hz bass should count as sub energy; a 2 kHz tone should not
+        ml::Stats stats;
+        ml::AnalysisEngine engine;
+        engine.prepare (sr, 2);
+
+        juce::AudioBuffer<float> buffer (2, blockSize);
+        double phase = 0.0;
+
+        for (int b = 0; b < (int) (sr * 6.0 / blockSize); ++b)
+        {
+            for (int n = 0; n < blockSize; ++n)
+            {
+                const float v = (float) (0.25 * std::sin (phase));
+                buffer.setSample (0, n, v);
+                buffer.setSample (1, n, v);
+                phase += 2.0 * juce::MathConstants<double>::pi * 30.0 / sr;
+            }
+
+            engine.process (buffer, stats, blockSize);
+        }
+
+        const auto s = ml::snapshot (stats);
+        check ("sub share 30 Hz > 40%", s.subSharePct > 40.0f ? 1.0 : 0.0, 1.0, 0.0);
+        check ("mono retained % (dual mono)", s.monoRetainPct, 100.0, 2.0);
+        check ("mono fold loss (dual mono)", s.monoFoldLossDb, 0.0, 0.2);
+    }
+
+    {
+        // hard-clipped sine leaves a measurable flat top
+        ml::Stats stats;
+        ml::AnalysisEngine engine;
+        engine.prepare (sr, 2);
+
+        juce::AudioBuffer<float> buffer (2, blockSize);
+        double phase = 0.0;
+
+        for (int b = 0; b < (int) (sr * 5.0 / blockSize); ++b)
+        {
+            for (int n = 0; n < blockSize; ++n)
+            {
+                const float v = juce::jlimit (-1.0f, 1.0f, (float) (1.7 * std::sin (phase)));
+                buffer.setSample (0, n, v);
+                buffer.setSample (1, n, v);
+                phase += 2.0 * juce::MathConstants<double>::pi * 100.0 / sr;
+            }
+
+            engine.process (buffer, stats, blockSize);
+        }
+
+        const auto s = ml::snapshot (stats);
+        check ("flat-top density > 0.2%", s.flatTopPct > 0.2f ? 1.0 : 0.0, 1.0, 0.0);
+        check ("flat-top density < 60%", s.flatTopPct < 60.0f ? 1.0 : 0.0, 1.0, 0.0);
+    }
+
+    // ---------------------------------------------------------------------
+    // 8) Defect analyser on a synthetic averaged spectrum
+    // ---------------------------------------------------------------------
+    {
+        constexpr double binHz = 48000.0 / 8192.0;
+        std::vector<float> spec (4097, -60.0f);
+
+        // fundamental 100 Hz with a strong 2nd-5th harmonic series
+        const auto addTone = [&] (double hz, float db)
+        {
+            const int b = (int) std::round (hz / binHz);
+            spec[(size_t) b] = db;
+            spec[(size_t) (b - 1)] = db - 3.0f;
+            spec[(size_t) (b + 1)] = db - 3.0f;
+        };
+
+        addTone (100.0, -20.0f);
+        addTone (200.0, -40.0f);
+        addTone (300.0, -40.0f);
+        addTone (400.0, -40.0f);
+        addTone (500.0, -40.0f);
+
+        ml::StatsSnapshot st;
+        st.hasSignal = true;
+        st.integrated = -14.0f;
+        st.truePeakDb = -1.0f;
+        st.psr = 12.0f;
+        st.subSharePct = 10.0f;
+        st.monoRetainPct = 100.0f;
+        st.flatTopPct = 0.0f;
+
+        const auto d = ml::analyseSignalDefects (spec, binHz, st);
+        check ("defects ready", d.ready ? 1.0 : 0.0, 1.0, 0.0);
+        check ("harmonic excess > 8 dB", d.harmonicExcessDb > 8.0f ? 1.0 : 0.0, 1.0, 0.0);
+        check ("distortion risk > 30", d.distortionRisk > 30.0f ? 1.0 : 0.0, 1.0, 0.0);
+
+        // lift the top octave to simulate aliasing
+        for (int i = 1; i < 4096; ++i)
+        {
+            const double f = (double) i * binHz;
+
+            if (f >= 16000.0)
+                spec[(size_t) i] = -40.0f;
+        }
+
+        const auto alias = ml::analyseSignalDefects (spec, binHz, st);
+        check ("alias risk > 50", alias.aliasRisk > 50.0f ? 1.0 : 0.0, 1.0, 0.0);
+        check ("smoothing 1/3 oct at 100 Hz",
+               (double) ml::SpectrumAnalyzer::smoothingOctavesAt (100.0), 1.0 / 3.0, 1.0e-6);
+        check ("smoothing 1/6 oct at 1 kHz",
+               (double) ml::SpectrumAnalyzer::smoothingOctavesAt (1000.0), 1.0 / 6.0, 1.0e-6);
+        check ("smoothing 1/12 oct at 10 kHz",
+               (double) ml::SpectrumAnalyzer::smoothingOctavesAt (10000.0), 1.0 / 12.0, 1.0e-6);
+    }
+
+    // ---------------------------------------------------------------------
+    // 9) CPU benchmark (stereo, 48 kHz, 512-sample blocks)
     // ---------------------------------------------------------------------
     {
         ml::Stats stats;

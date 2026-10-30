@@ -144,7 +144,11 @@ void DetailArea::setState (const UiState& s)
                 meters.setValues (s.stats);
             break;
 
-        default:
+        case PageId::delivery:
+        case PageId::signal:
+        case PageId::diagnostics:
+        case PageId::timeline:
+        case PageId::truePeak:
             if ((tick % 2) == 0)
                 repaint();
             break;

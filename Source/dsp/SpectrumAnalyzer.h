@@ -84,15 +84,23 @@ public:
 
     void setSmoothing (float s) noexcept { smoothing = juce::jlimit (0.0f, 1.0f, s); }
 
-    const float* getMagnitudes() const noexcept { return magnitudes.data(); }
-    const float* getPeakHold() const noexcept { return peakHold.data(); }
+    const float* getMagnitudes() const noexcept { return displayMagnitudes.data(); }
+    const float* getPeakHold() const noexcept { return displayPeak.data(); }
     int getNumBins() const noexcept { return numBins; }
     double getBinHz() const noexcept { return binHz; }
     float getFramePeakDb() const noexcept { return framePeakDb; }
 
-    /** Interpolated magnitude in dB at an arbitrary frequency (log-domain look-up,
-        which removes the blocky "staircase" look at low frequencies). */
+    /** Interpolated magnitude in dB at an arbitrary frequency. The spectrum is
+        fractional-octave smoothed first (1/3 octave below 250 Hz, 1/6 below
+        4 kHz, 1/12 above), so the low end draws as a continuous curve instead
+        of FFT-bin stairs. */
     float getMagnitudeAt (double hz) const noexcept;
+
+    /** Same interpolation for the peak-hold trace. */
+    float getPeakAt (double hz) const noexcept;
+
+    /** Smoothed octave width used at a given frequency (for documentation/UI). */
+    static float smoothingOctavesAt (double hz) noexcept;
 
     /** Energy share of the four QC bands: 20-250 Hz, 250 Hz-2 kHz, 2-8 kHz, 8-20 kHz (%). */
     const std::array<float, 4>& getBandRatios() const noexcept { return bandRatios; }
@@ -123,6 +131,8 @@ private:
     void computeBandRatios();
     void computeResonances();
     void updateAverageSpectrum();
+    void buildDisplaySpectrum();
+    float interpolateBins (const std::vector<float>& data, double hz) const noexcept;
 
     std::unique_ptr<juce::dsp::FFT> fft;
 
@@ -135,6 +145,9 @@ private:
     std::vector<float> fftData;
     std::vector<float> magnitudes;
     std::vector<float> peakHold;
+    std::vector<float> displayMagnitudes;
+    std::vector<float> displayPeak;
+    std::vector<double> powerPrefix;
     std::vector<float> longTermPower;
     std::vector<float> averageDb;
     std::vector<float> scratch;

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(MasterLens VERSION 1.4.1 LANGUAGES C CXX)
+project(MasterLens VERSION 1.4.2 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -14,8 +14,8 @@ endif()
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/.tools/JUCE ${CMAKE_BINARY_DIR}/JUCE EXCLUDE_FROM_ALL)
 
 juce_add_plugin(MasterLens
-    VERSION 1.4.1
-    COMPANY_NAME "OrchAudio"
+    VERSION 1.4.2
+    COMPANY_NAME "BerryStudio"
     BUNDLE_ID "com.orchaudio.masterlens"
     PLUGIN_MANUFACTURER_CODE OrcA
     PLUGIN_CODE Maln
@@ -31,6 +31,7 @@ juce_add_plugin(MasterLens
     MICROPHONE_PERMISSION_ENABLED FALSE
     AU_MAIN_TYPE kAudioUnitType_Effect
     VST3_CATEGORIES Fx Analyzer
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/packaging/icon.png"
 )
 
 set(MASTERLENS_SOURCES
@@ -49,7 +50,9 @@ set(MASTERLENS_SOURCES
     Source/dsp/AnalysisEngine.cpp
     Source/dsp/SpectrumAnalyzer.cpp
     Source/dsp/ReferenceSpectrum.cpp
+    Source/dsp/DefectAnalyzer.cpp
     Source/ui/Theme.cpp
+    Source/ui/Logo.cpp
     Source/ui/Panels.cpp
     Source/ui/Meters.cpp
     Source/ui/Stereo.cpp
@@ -65,9 +68,11 @@ set(MASTERLENS_SOURCES
     Source/ui/DetailPages.cpp
     Source/ui/DetailPeak.cpp
     Source/ui/DetailMix.cpp
+    Source/ui/DetailSignal.cpp
     Source/ui/DetailDiag.cpp
     Source/ui/DetailTime.cpp
     Source/ui/Advisor.cpp
+    Source/ui/Settings.cpp
 )
 
 target_sources(MasterLens PRIVATE ${MASTERLENS_SOURCES})
@@ -102,6 +107,7 @@ target_sources(MasterLensDspTest PRIVATE
     Tests/DspTest.cpp
     Source/dsp/AnalysisEngine.cpp
     Source/dsp/SpectrumAnalyzer.cpp
+    Source/dsp/DefectAnalyzer.cpp
 )
 
 target_include_directories(MasterLensDspTest PRIVATE Source)

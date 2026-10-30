@@ -93,25 +93,39 @@ void MasterLensAudioProcessorEditor::updateRail()
         const int level = ! valid ? -1 : (over > 0 ? 3 : (warning > 0 ? 2 : 0));
 
         if (valid) note (level);
-        rail.setModule (4, T ("平台交付", "Delivery"),
-                        valid ? juce::String (ml::numPlatforms - over - warning) + "/6" : ml::noValue(),
+        rail.setModule (4, T ("平台归一化", "Normalisation"),
+                        valid ? juce::String (ml::numPlatforms - over - warning) + "/"
+                                    + juce::String (ml::numPlatforms)
+                              : ml::noValue(),
                         statusLabel (level), statusColour (level));
     }
 
-    // 5 diagnostics
+    // 5 signal health
+    {
+        const float worstRisk = signalDefects.worstRisk();
+        const int level = ! live ? -1 : (worstRisk >= 65.0f ? 3
+                                          : (worstRisk >= 35.0f ? 2 : 0));
+
+        if (level >= 0) note (level);
+        rail.setModule (5, T ("信号健康", "Signal health"),
+                        live ? juce::String (juce::roundToInt (worstRisk)) + "%" : ml::noValue(),
+                        statusLabel (level), statusColour (level));
+    }
+
+    // 6 diagnostics
     {
         const int critical = advisor.count (ml::Severity::critical);
         const int warned = advisor.count (ml::Severity::warn);
         const int level = ! live ? -1 : (critical > 0 ? 3 : (warned > 0 ? 2 : 0));
 
         if (level >= 0) note (level);
-        rail.setModule (5, T ("混音诊断", "Diagnostics"),
+        rail.setModule (6, T ("混音诊断", "Diagnostics"),
                         juce::String ((int) issueCache.size()) + T (" 项", " items"),
                         statusLabel (level), statusColour (level));
     }
 
-    // 6 timeline
-    rail.setModule (6, T ("时间线", "Timeline"),
+    // 7 timeline
+    rail.setModule (7, T ("时间线", "Timeline"),
                     juce::String ((int) markers.size()) + T (" 标记", " markers"),
                     markers.empty() ? statusLabel (-1) : statusLabel (1),
                     markers.empty() ? statusColour (-1) : statusColour (1));

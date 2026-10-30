@@ -12,6 +12,7 @@ void MasterLensAudioProcessorEditor::updateTexts()
     holdButton.setButtonText (frozen ? T ("恢复", "Resume") : T ("保持", "Hold"));
     clearButton.setButtonText (T ("清零统计", "Clear stats"));
     aboutButton.setButtonText (T ("关于", "About"));
+    settingsButton.setButtonText (T ("设置", "Settings"));
     themeButton.setButtonText (ml::theme::dark ? T ("深色", "Dark") : T ("浅色", "Light"));
     languageButton.setButtonText (en ? juce::String::fromUTF8 ("中文") : juce::String ("EN"));
     exportButton.setButtonText (T ("导出报告", "Export"));
@@ -37,6 +38,9 @@ void MasterLensAudioProcessorEditor::updateTexts()
     themeButton.setTooltip (T ("切换深色 / 浅色主题", "Switch dark / light theme"));
     languageButton.setTooltip (T ("切换界面语言", "Switch interface language"));
     aboutButton.setTooltip (T ("关于 MasterLens", "About MasterLens"));
+    settingsButton.setTooltip (T ("设置：界面缩放 100–200%，字号与布局同步放大（⌘ + / ⌘ − 快速调整）",
+                                  "Settings: interface scale 100-200% - type and layout zoom together "
+                                  "(Cmd + / Cmd -)"));
     exportButton.setTooltip (T ("导出 TXT / JSON / CSV 检查报告（⌘E）",
                                 "Export TXT / JSON / CSV QC report (Cmd+E)"));
 
@@ -101,6 +105,20 @@ bool MasterLensAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
         return true;
     }
 
+    if (key.getModifiers().isCommandDown())
+    {
+        const auto scaleChar = key.getTextCharacter();
+
+        if (scaleChar == '=' || scaleChar == '+' || scaleChar == '-')
+        {
+            const int step = juce::jlimit (0, (int) ml::ui::scaleSteps.size() - 1,
+                                           ml::ui::stepIndexFor (ml::ui::scale)
+                                               + (scaleChar == '-' ? -1 : 1));
+            setUiScale (ml::ui::scaleSteps[(size_t) step], true);
+            return true;
+        }
+    }
+
     if (key.getModifiers().isCommandDown() && (key.getTextCharacter() == 'e' || key.getTextCharacter() == 'E'))
     {
         exportReport();
@@ -115,7 +133,7 @@ bool MasterLensAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
         return true;
     }
 
-    if (c >= '1' && c <= '7')
+    if (c >= '1' && c <= (char) ('0' + ml::numPages))
     {
         setPage ((int) (c - '1'));
         return true;
@@ -123,8 +141,12 @@ bool MasterLensAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
 
     if (key == juce::KeyPress::escapeKey)
     {
-        if (aboutPanel.isVisible())
+        if (settingsPanel.isVisible())
+            settingsPanel.setVisibleAndFocus (false);
+        else if (aboutPanel.isVisible())
             aboutPanel.setVisibleAndFocus (false);
+        else if (genrePanel.isVisible())
+            genrePanel.setVisibleAndFocus (false);
         else
             setHold (false, false);
 

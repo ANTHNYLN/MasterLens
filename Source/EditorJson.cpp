@@ -83,12 +83,53 @@ juce::String MasterLensAudioProcessorEditor::buildReportJson() const
         o->setProperty ("tpCeiling", p.tpCeiling);
         o->setProperty ("gainDb", res.gainDb);
         o->setProperty ("predictedTp", res.predictedTp);
+        o->setProperty ("predictedTpBeforeLimiter", res.predictedTpRaw);
+        o->setProperty ("serviceLimitingDb", res.limitedDb);
+        o->setProperty ("wastedLoudnessDb", res.wastedLoudnessDb);
+        o->setProperty ("normalises", p.normalises);
         o->setProperty ("state", res.state == ml::DeliveryState::over ? "over"
                              : res.state == ml::DeliveryState::warning ? "warning" : "ok");
         platformResults.add (juce::var (o));
     }
 
     root->setProperty ("platforms", platformResults);
+
+    auto* signal = new juce::DynamicObject();
+    signal->setProperty ("harmonicExcessDb", signalDefects.harmonicExcessDb);
+    signal->setProperty ("imdSidebandDb", signalDefects.imdSidebandDb);
+    signal->setProperty ("flatTopPct", signalDefects.flatTopPct);
+    signal->setProperty ("distortionRisk", signalDefects.distortionRisk);
+    signal->setProperty ("hfTiltDb", signalDefects.hfTiltDb);
+    signal->setProperty ("aliasExcessDb", signalDefects.aliasExcessDb);
+    signal->setProperty ("aliasRisk", signalDefects.aliasRisk);
+    signal->setProperty ("subSharePct", signalDefects.subSharePct);
+    signal->setProperty ("subTiltDb", signalDefects.subTiltDb);
+    signal->setProperty ("subRisk", signalDefects.subRisk);
+    signal->setProperty ("transientScore", signalDefects.transientScore);
+    signal->setProperty ("crestLossDb", signalDefects.crestLossDb);
+    signal->setProperty ("monoFoldLossDb", signalDefects.monoFoldLossDb);
+    signal->setProperty ("monoRetainPct", signalDefects.monoRetainPct);
+    signal->setProperty ("monoLowRetainPct", signalDefects.monoLowRetainPct);
+    signal->setProperty ("maskingDb", signalDefects.maskingDb);
+    signal->setProperty ("maskingRisk", signalDefects.maskingRisk);
+    signal->setProperty ("attributionLayers", signalDefects.attributionCount);
+    root->setProperty ("signalIntegrity", signal);
+
+    if (reference.hasStats())
+    {
+        const auto rs = reference.getStats();
+        auto* ref = new juce::DynamicObject();
+        ref->setProperty ("integratedLufs", rs.integrated);
+        ref->setProperty ("lra", rs.lra);
+        ref->setProperty ("plr", rs.getPlr());
+        ref->setProperty ("truePeakDbtp", rs.truePeakDb);
+        ref->setProperty ("lowSidePct", rs.lowSidePct);
+        ref->setProperty ("subSharePct", rs.subSharePct);
+        ref->setProperty ("deltaLufs", stats.integrated - rs.integrated);
+        ref->setProperty ("deltaLra", stats.lra - rs.lra);
+        ref->setProperty ("deltaPlr", stats.getPlr() - rs.getPlr());
+        root->setProperty ("reference", ref);
+    }
 
     juce::Array<juce::var> markerArray;
 
@@ -108,7 +149,8 @@ juce::String MasterLensAudioProcessorEditor::buildReportJson() const
 
     for (const auto& c : ml::buildChecklist (stats, processor.getTargetLufs(),
                                              processor.getCeilingDb(),
-                                             analyzer.getBandDeviations()))
+                                             analyzer.getBandDeviations(),
+                                             signalDefects))
     {
         auto* o = new juce::DynamicObject();
         o->setProperty ("label", c.label);

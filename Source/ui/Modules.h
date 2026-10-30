@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "../dsp/AnalysisEngine.h"
+#include "../dsp/DefectAnalyzer.h"
 #include "../dsp/SpectrumAnalyzer.h"
 #include "Advisor.h"
 #include "Theme.h"
@@ -29,6 +30,9 @@ struct UiState
     std::vector<SpectrumAnalyzer::Resonance> resonances;
     std::vector<TpEvent> tpEvents;
     std::vector<Marker> markers;
+    SignalDefects defects;
+    StatsSnapshot referenceStats;
+    bool hasReferenceStats = false;
     float target = -14.0f;
     float ceiling = -1.0f;
     bool hasReference = false;
@@ -40,8 +44,8 @@ struct UiState
     bool snapshotValid[2] { false, false };
 };
 
-enum class PageId { loudness = 0, truePeak, spectrum, stereo, delivery, diagnostics, timeline };
-constexpr int numPages = 7;
+enum class PageId { loudness = 0, truePeak, spectrum, stereo, delivery, signal, diagnostics, timeline };
+constexpr int numPages = 8;
 
 //==============================================================================
 /** Left hand module list: verdict header + one 40 px row per module. */
@@ -149,6 +153,7 @@ private:
     void paintSpectrumExtras (juce::Graphics&);
     void paintStereoExtras (juce::Graphics&);
     void paintDelivery (juce::Graphics&);
+    void paintSignal (juce::Graphics&);
     void paintDiagnostics (juce::Graphics&);
     void paintTimeline (juce::Graphics&);
     void paintReferenceBar (juce::Graphics&, juce::Rectangle<int>);

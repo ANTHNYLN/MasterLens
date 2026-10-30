@@ -35,7 +35,8 @@ juce::String Advisor::getHeadline() const
 void Advisor::update (const StatsSnapshot& stats,
                       const std::vector<float>& bandDevs,
                       float targetLufs,
-                      float ceilingDb)
+                      float ceilingDb,
+                      const SignalDefects& defects)
 {
     ++frame;
 
@@ -350,6 +351,79 @@ void Advisor::update (const StatsSnapshot& stats,
     }
 
     bool anyBad = false;
+
+    // ---- signal integrity (v1.4.2) -----------------------------------------
+    if (signal && defects.ready)
+    {
+        if (defects.distortionRisk >= 55.0f)
+            add ("sig-dist", T ("谐波 / 互调失真", "Harmonic / IMD distortion"),
+                 TF (T ("2–5 次谐波高于局部谱底 {h} dB，互调边带 +{i} dB。信号已被非线性级塑形；"
+                        "先降 0.5–1 dB 输出，再检查饱和与限幅的过采样。",
+                        "2nd-5th harmonics sit {h} dB above the local floor and IMD sidebands are "
+                        "+{i} dB. A nonlinear stage is shaping the signal - drop 0.5-1 dB, then check "
+                        "saturation and limiter oversampling."),
+                     { { "h", one (defects.harmonicExcessDb) }, { "i", one (defects.imdSidebandDb) } }),
+                 Severity::warn);
+
+        if (defects.flatTopPct > 0.05f)
+            add ("sig-flat", T ("波形平顶（硬削波）", "Flat-topped waveform"),
+                 TF (T ("{p}% 的样本停在平顶上，属于硬削波而不是软限幅；高频会出现混叠并伴随瞬态损失。",
+                        "{p}% of samples sit on a flat top - that is hard clipping, not soft limiting, "
+                        "with aliasing and transient loss to match."),
+                     { { "p", juce::String (defects.flatTopPct, 2) } }),
+                 defects.flatTopPct > 0.5f ? Severity::critical : Severity::warn);
+
+        if (defects.aliasRisk >= 55.0f)
+            add ("sig-alias", T ("高频混叠风险", "Aliasing risk"),
+                 TF (T ("16–20 kHz 比自然滚降高 {e} dB（高频斜率 {t} dB）。常见于未过采样的削波 / 限幅器。",
+                        "16-20 kHz sits {e} dB above the natural roll-off (HF tilt {t} dB). Usually a "
+                        "clipping or limiting stage without oversampling."),
+                     { { "e", one (defects.aliasExcessDb) }, { "t", one (defects.hfTiltDb) } }),
+                 Severity::warn);
+
+        if (defects.subRisk >= 55.0f)
+            add ("sig-sub", T ("超低频堆积", "Sub-bass build-up"),
+                 TF (T ("40 Hz 以下占总能量 {s}%，20–40 Hz 比 40–80 Hz 高 {t} dB。小扬声器会浪费功率并提前触发限幅。",
+                        "Below 40 Hz takes {s}% of the total energy and 20-40 Hz sits {t} dB above "
+                        "40-80 Hz. Small speakers waste power and hit the limiter early."),
+                     { { "s", one (defects.subSharePct) }, { "t", one (defects.subTiltDb) } }),
+                 Severity::info);
+
+        if (defects.transientScore < 45.0f)
+            add ("sig-transient", T ("瞬态完整性下降", "Transient integrity lost"),
+                 TF (T ("瞬态得分 {s}/100，PLR {p} dB（峰响损失 {c} dB）。攻击被限幅压平，鼓点会失去冲击力。",
+                        "Transient score {s}/100 with PLR {p} dB ({c} dB crest loss). Attacks are "
+                        "flattened, so drum hits lose their impact."),
+                     { { "s", juce::String (juce::roundToInt (defects.transientScore)) },
+                       { "p", one (stats.getPlr()) }, { "c", one (defects.crestLossDb) } }),
+                 Severity::warn);
+
+        if (defects.monoRisk >= 40.0f)
+            add ("sig-mono", T ("单声道折叠内容损失", "Mono fold loss"),
+                 TF (T ("折叠到 M=(L+R)/2 后损失 {l} dB（保留 {r}%，低频保留 {rl}%）。手机、Club 单声道 PA 会直接听到这个损失。",
+                        "Folding to M=(L+R)/2 loses {l} dB (retains {r}%, low end {rl}%). Phone speakers "
+                        "and mono club PAs hear exactly that loss."),
+                     { { "l", one (defects.monoFoldLossDb) }, { "r", one (defects.monoRetainPct) },
+                       { "rl", one (defects.monoLowRetainPct) } }),
+                 defects.monoRisk >= 70.0f ? Severity::critical : Severity::warn);
+
+        if (defects.maskingRisk >= 55.0f)
+            add ("sig-masking", T ("中频掩蔽风险", "Mid masking risk"),
+                 TF (T ("200–800 Hz 比 1–4 kHz 存在感高 {v} dB，人声与军鼓的清晰度会被低中能量掩蔽。",
+                        "200-800 Hz sits {v} dB above the 1-4 kHz presence region, so low-mid energy "
+                        "masks vocals and snare clarity."),
+                     { { "v", one (defects.maskingDb) } }),
+                 Severity::info);
+
+        if (defects.attributionCount >= 2)
+            add ("sig-link", T ("多层联动异常（已归因）", "Correlated multi-layer issue"),
+                 T ("多个信号层同时越线：检查末级限幅 / 削波是否同时造成真峰值、瞬态与高频失真；"
+                    "若低频层也越线，则先处理 20–40 Hz 侧向内容，再复查单声道折叠。",
+                    "Several signal layers exceed their thresholds together. Check whether the final "
+                    "limiter/clipper is causing peak, transient and HF distortion at once; if the "
+                    "low-end layer is also over, fix 20-40 Hz side content before re-checking mono fold."),
+                 Severity::critical);
+    }
 
     for (const auto& f : found)
         if (f.severity == Severity::warn || f.severity == Severity::critical)

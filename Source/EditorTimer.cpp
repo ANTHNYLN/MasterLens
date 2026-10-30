@@ -94,6 +94,10 @@ void MasterLensAudioProcessorEditor::timerCallback()
     const auto& devs = analyzer.getBandDeviations();
     const auto& resos = analyzer.getResonances();
 
+    if ((frameCounter % 6) == 0)
+        signalDefects = ml::analyseSignalDefects (analyzer.getAverageSpectrumDb(),
+                                                  analyzer.getBinHz(), stats);
+
     for (const auto& e : tpEvents)
         addMarker (e.time, 2, 0, T ("真峰值 +", "TP +") + ml::fmt1 (e.overshootDb) + " dBTP");
 
@@ -119,6 +123,12 @@ void MasterLensAudioProcessorEditor::timerCallback()
     us.resonances = resos;
     us.tpEvents = tpEvents;
     us.markers = markers;
+    us.defects = signalDefects;
+    us.hasReferenceStats = reference.hasStats();
+
+    if (us.hasReferenceStats)
+        us.referenceStats = reference.getStats();
+
     us.target = target;
     us.ceiling = ceiling;
     us.hasReference = analyzer.hasReference();
@@ -147,7 +157,7 @@ void MasterLensAudioProcessorEditor::timerCallback()
             detail.setHistory (curve, target, stats.lra);
         }
 
-        advisor.update (stats, devs, target, ceiling);
+        advisor.update (stats, devs, target, ceiling, signalDefects);
         issueCache = advisor.getIssues();
 
         detail.setIssues (issueCache);

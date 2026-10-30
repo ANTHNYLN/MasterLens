@@ -19,6 +19,8 @@ juce::String MasterLensAudioProcessorEditor::buildReportCsv() const
     csv << "section,item,value\n";
     line ("meta", "generatedAt", stamp);
     line ("meta", "version", ml::kVersion);
+    line ("meta", "developer", ml::kDeveloper);
+    line ("meta", "organisation", ml::kOrganisation);
     line ("meta", "sampleRate", juce::String (processor.getSampleRateValue(), 0));
 
     line ("loudness", "integratedLufs", ml::num (stats.integrated));
@@ -52,14 +54,41 @@ juce::String MasterLensAudioProcessorEditor::buildReportCsv() const
         line ("platform", name + " ceilingDbtp", ml::num (p.tpCeiling));
         line ("platform", name + " gainDb", ml::sgn (res.gainDb));
         line ("platform", name + " predictedTp", ml::num (res.predictedTp));
+        line ("platform", name + " serviceLimitingDb", ml::num (res.limitedDb));
+        line ("platform", name + " wastedLoudnessLu", ml::num (res.wastedLoudnessDb));
         line ("platform", name + " state",
               res.state == ml::DeliveryState::over ? "over"
             : res.state == ml::DeliveryState::warning ? "warning" : "ok");
     }
 
+    line ("signal", "harmonicExcessDb", ml::num (signalDefects.harmonicExcessDb));
+    line ("signal", "imdSidebandDb", ml::num (signalDefects.imdSidebandDb));
+    line ("signal", "flatTopPct", ml::num (signalDefects.flatTopPct, 2));
+    line ("signal", "distortionRisk", ml::num (signalDefects.distortionRisk, 0));
+    line ("signal", "aliasRisk", ml::num (signalDefects.aliasRisk, 0));
+    line ("signal", "subSharePct", ml::num (signalDefects.subSharePct));
+    line ("signal", "subTiltDb", ml::num (signalDefects.subTiltDb));
+    line ("signal", "transientScore", ml::num (signalDefects.transientScore, 0));
+    line ("signal", "monoFoldLossDb", ml::num (signalDefects.monoFoldLossDb, 2));
+    line ("signal", "monoRetainPct", ml::num (signalDefects.monoRetainPct));
+    line ("signal", "maskingDb", ml::num (signalDefects.maskingDb));
+    line ("signal", "attributionLayers", juce::String (signalDefects.attributionCount));
+
+    if (reference.hasStats())
+    {
+        const auto rs = reference.getStats();
+        line ("reference", "integratedLufs", ml::num (rs.integrated));
+        line ("reference", "deltaLufs", ml::num (stats.integrated - rs.integrated));
+        line ("reference", "lra", ml::num (rs.lra));
+        line ("reference", "deltaLra", ml::num (stats.lra - rs.lra));
+        line ("reference", "plr", ml::num (rs.getPlr()));
+        line ("reference", "deltaPlr", ml::num (stats.getPlr() - rs.getPlr()));
+    }
+
     for (const auto& c : ml::buildChecklist (stats, processor.getTargetLufs(),
                                              processor.getCeilingDb(),
-                                             analyzer.getBandDeviations()))
+                                             analyzer.getBandDeviations(),
+                                             signalDefects))
         line ("check", c.label, c.value);
 
     for (const auto& m : markers)
@@ -76,6 +105,6 @@ void MasterLensAudioProcessorEditor::setPageForSnapshot (int page)
 
 void MasterLensAudioProcessorEditor::expandFirstIssueForSnapshot()
 {
-    setPage (5);
+    setPage (6);
     detail.expandFirstIssueForSnapshot();
 }

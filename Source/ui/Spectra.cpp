@@ -134,71 +134,78 @@ void SpectrumDisplay::paint (juce::Graphics& g)
     if (numBins < 4)
         return;
 
-    const int steps = juce::jlimit (120, 640, getWidth());
+    const int steps = juce::jlimit (140, 760, getWidth());
+
+    const double logRange = std::log (20000.0 / 20.0);
 
     std::vector<float> values ((size_t) steps + 1, -100.0f);
     std::vector<float> holds ((size_t) steps + 1, -100.0f);
 
-    const double logRange = std::log (20000.0 / 20.0);
-
+    // Sample the already fractional-octave smoothed curve with cubic
+    // interpolation. No per-pixel max() any more - that was what produced the
+    // jagged low end even after the FFT resolution was raised.
     for (int px = 0; px <= steps; ++px)
     {
-        const double f0 = 20.0 * std::exp (logRange * (double) px / (double) steps);
-        const double f1 = 20.0 * std::exp (logRange * (double) (px + 1) / (double) steps);
+        const double f = 20.0 * std::exp (logRange * ((double) px + 0.5) / (double) steps);
 
-        int b0 = juce::jlimit (1, numBins - 1, (int) std::floor (f0 / binHz));
-        int b1 = juce::jlimit (b0 + 1, numBins, (int) std::ceil (f1 / binHz));
-
-        float value = -100.0f, held = -100.0f;
-
-        for (int b = b0; b < b1; ++b)
-        {
-            value = juce::jmax (value, mags[b]);
-            held = juce::jmax (held, hold[b]);
-        }
-
-        values[(size_t) px] = value;
-        holds[(size_t) px] = held;
+        values[(size_t) px] = analyzer->getMagnitudeAt (f);
+        holds[(size_t) px] = analyzer->getPeakAt (f);
     }
 
-    for (int i = 1; i < steps; ++i)
-        values[(size_t) i] = 0.25f * values[(size_t) (i - 1)]
-                           + 0.5f * values[(size_t) i]
-                           + 0.25f * values[(size_t) (i + 1)];
-
-    juce::Path curve, holdPath;
-
-    for (int px = 0; px <= steps; ++px)
+    const auto xAt = [&] (int px)
     {
-        const float x = xFor ((double) px / (double) steps);
-        const float y = yForDb (values[(size_t) px]);
-        const float yh = yForDb (holds[(size_t) px]);
+        return xFor ((double) px / (double) steps);
+    };
 
-        if (px == 0)
+    const auto makeSmoothPath = [&] (const std::vector<float>& data)
+    {
+        juce::Path p;
+
+        if (steps < 3)
+            return p;
+
+        const auto pointAt = [&] (int index)
         {
-            curve.startNewSubPath (x, y);
-            holdPath.startNewSubPath (x, yh);
-        }
-        else
+            const int clamped = juce::jlimit (0, steps, index);
+            return juce::Point<float> (xAt (clamped), yForDb (data[(size_t) clamped]));
+        };
+
+        p.startNewSubPath (pointAt (0));
+
+        for (int i = 0; i < steps; ++i)
         {
-            curve.lineTo (x, y);
-            holdPath.lineTo (x, yh);
+            const auto p0 = pointAt (i - 1);
+            const auto p1 = pointAt (i);
+            const auto p2 = pointAt (i + 1);
+            const auto p3 = pointAt (i + 2);
+
+            const auto c1 = p1 + (p2 - p0) / 6.0f;
+            const auto c2 = p2 - (p3 - p1) / 6.0f;
+
+            p.cubicTo (c1, c2, p2);
         }
-    }
+
+        return p;
+    };
+
+    const auto curve = makeSmoothPath (values);
+    const auto holdPath = makeSmoothPath (holds);
 
     juce::Path filled (curve);
     filled.lineTo (plot.getRight(), plot.getBottom());
     filled.lineTo (plot.getX(), plot.getBottom());
     filled.closeSubPath();
 
-    g.setColour (theme::accent.withAlpha (0.12f));
+    g.setColour (theme::accent.withAlpha (0.10f));
     g.fillPath (filled);
 
     g.setColour (theme::accent);
-    g.strokePath (curve, juce::PathStrokeType (1.6f));
+    g.strokePath (curve, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved,
+                                               juce::PathStrokeType::rounded));
 
-    g.setColour (theme::violet.withAlpha (0.5f));
-    g.strokePath (holdPath, juce::PathStrokeType (1.0f));
+    g.setColour (theme::violet.withAlpha (0.45f));
+    g.strokePath (holdPath, juce::PathStrokeType (1.0f, juce::PathStrokeType::curved,
+                                                  juce::PathStrokeType::rounded));
 
     int peakBin = 1;
     float peakDb = -100.0f;

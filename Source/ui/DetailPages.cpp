@@ -11,7 +11,8 @@ static juce::String pageTitle (PageId p)
         case PageId::truePeak:    return T ("真峰值", "True peak");
         case PageId::spectrum:    return T ("频谱平衡", "Spectral balance");
         case PageId::stereo:      return T ("立体声 / 相位", "Stereo / phase");
-        case PageId::delivery:    return T ("平台交付", "Delivery check");
+        case PageId::delivery:    return T ("平台归一化", "Platform normalisation");
+        case PageId::signal:      return T ("信号健康", "Signal health");
         case PageId::diagnostics: return T ("混音诊断", "Mix diagnostics");
         case PageId::timeline:    return T ("时间线", "Timeline");
     }
@@ -72,7 +73,14 @@ void DetailArea::paint (juce::Graphics& g)
             break;
 
         case PageId::delivery:
-            meta = T ("静态目标表", "static targets") + ml::sep() + T ("不联网", "offline");
+            meta = juce::String (numPlatforms) + T (" 个平台", " platforms") + ml::sep()
+                 + T ("归一化后果", "normalisation outcome");
+            break;
+
+        case PageId::signal:
+            meta = T ("失真 / 混叠 / 超低 / 瞬态 / 单声道 / 掩蔽", "THD-IMD / alias / sub / transient / mono / masking")
+                 + ml::sep() + T ("最高风险 ", "max risk ")
+                 + juce::String (juce::roundToInt (state.defects.worstRisk()));
             break;
 
         case PageId::diagnostics:
@@ -99,6 +107,7 @@ void DetailArea::paint (juce::Graphics& g)
         case PageId::spectrum:    paintSpectrumExtras (g); break;
         case PageId::stereo:      paintStereoExtras (g);   break;
         case PageId::delivery:    paintDelivery (g);       break;
+        case PageId::signal:      paintSignal (g);         break;
         case PageId::diagnostics: paintDiagnostics (g);    break;
         case PageId::timeline:    paintTimeline (g);       break;
     }

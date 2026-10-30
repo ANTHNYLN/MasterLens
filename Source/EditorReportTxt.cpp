@@ -12,7 +12,8 @@ juce::String MasterLensAudioProcessorEditor::buildReport() const
     const float ceiling = processor.getCeilingDb();
     const auto& s = stats;
 
-    r << "MasterLens " << ml::kVersion << T (" · 母带交付检查报告\n", " - mastering QC report\n");
+    r << "MasterLens " << ml::kVersion << " by " << ml::kOrganisation
+      << T (" · 母带交付检查报告\n", " - mastering QC report\n");
     r << T ("生成时间：", "Generated: ") << juce::Time::getCurrentTime().toISO8601 (true) << "\n";
     r << T ("采样率：", "Sample rate: ") << (int) processor.getSampleRateValue() << " Hz   "
       << T ("声道：", "Channels: ") << (s.stereo ? T ("立体声", "stereo") : T ("单声道", "mono")) << "\n\n";
@@ -51,8 +52,47 @@ juce::String MasterLensAudioProcessorEditor::buildReport() const
         r << "  " << T (p.nameZh, p.nameEn) << " : "
           << T ("增益 ", "gain ") << ml::sgn (res.gainDb) << " dB, "
           << T ("预测 TP ", "predicted TP ") << ml::fmt1 (res.predictedTp) << " dBTP, "
+          << T ("服务限幅 ", "limited ") << ml::fmt1 (res.limitedDb) << " dB, "
+          << T ("被丢弃响度 ", "wasted loudness ") << ml::fmt1 (res.wastedLoudnessDb) << " LU, "
           << (res.state == ml::DeliveryState::over ? T ("超限", "OVER")
             : res.state == ml::DeliveryState::warning ? T ("临界", "WARNING") : T ("可行", "OK")) << "\n";
+    }
+
+    r << "\n" << T ("【信号完整性】\n", "[Signal integrity]\n");
+    r << "  " << T ("谐波堆积 / 互调边带 / 平顶 ", "harmonics / IMD / flat tops ") << " : "
+      << ml::fmt1 (signalDefects.harmonicExcessDb) << " dB / +"
+      << ml::fmt1 (signalDefects.imdSidebandDb) << " dB / "
+      << ml::fmt2 (signalDefects.flatTopPct) << "%\n";
+    r << "  " << T ("混叠风险 / 高频斜率        ", "alias risk / HF tilt          ") << " : "
+      << juce::String (juce::roundToInt (signalDefects.aliasRisk)) << " / "
+      << ml::sgn (signalDefects.hfTiltDb) << " dB\n";
+    r << "  " << T ("超低占比 / 20-40 斜率       ", "sub share / 20-40 tilt          ") << " : "
+      << ml::fmt1 (signalDefects.subSharePct) << "% / "
+      << ml::sgn (signalDefects.subTiltDb) << " dB\n";
+    r << "  " << T ("瞬态得分 / 峰响损失         ", "transient / crest loss          ") << " : "
+      << juce::String (juce::roundToInt (signalDefects.transientScore)) << "/100 / "
+      << ml::fmt1 (signalDefects.crestLossDb) << " dB\n";
+    r << "  " << T ("单声道折叠损失 / 保留       ", "mono fold loss / retained       ") << " : "
+      << ml::fmt1 (signalDefects.monoFoldLossDb) << " dB / "
+      << ml::fmt1 (signalDefects.monoRetainPct) << "% ("
+      << T ("低频 ", "low ") << ml::fmt1 (signalDefects.monoLowRetainPct) << "%)\n";
+    r << "  " << T ("中频掩蔽                    ", "mid masking                    ") << " : "
+      << ml::sgn (signalDefects.maskingDb) << " dB\n";
+    r << "  " << T ("联动层                      ", "correlated layers              ") << " : "
+      << signalDefects.attributionCount << "\n";
+
+    if (reference.hasStats())
+    {
+        const auto rs = reference.getStats();
+        r << "\n" << T ("【参考作品对比】\n", "[Reference comparison]\n");
+        r << "  " << T ("综合响度 ", "integrated ") << ml::fmt1 (rs.integrated) << " LUFS"
+          << T ("（差 ", " (delta ") << ml::sgn (s.integrated - rs.integrated) << " LU)\n";
+        r << "  LRA      " << ml::fmt1 (rs.lra) << " LU"
+          << T ("（差 ", " (delta ") << ml::sgn (s.lra - rs.lra) << " LU)\n";
+        r << "  PLR      " << ml::fmt1 (rs.getPlr()) << " dB"
+          << T ("（差 ", " (delta ") << ml::sgn (s.getPlr() - rs.getPlr()) << " dB)\n";
+        r << "  " << T ("超低占比 ", "sub share ") << ml::fmt1 (rs.subSharePct) << "%"
+          << T ("（差 ", " (delta ") << ml::sgn (s.subSharePct - rs.subSharePct) << "%)\n";
     }
 
     r << "\n" << T ("【时间线标记】\n", "[Timeline markers]\n");

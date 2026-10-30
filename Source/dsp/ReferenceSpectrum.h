@@ -30,6 +30,10 @@ public:
     /** Averaged spectrum in dB per bin; empty until ready. */
     std::vector<float> getSpectrumDb() const;
 
+    /** Aggregate loudness / dynamics of the reference set (energy weighted). */
+    StatsSnapshot getStats() const;
+    bool hasStats() const noexcept { return statsReady.load(); }
+
     juce::StringArray getFiles() const;
 
 private:
@@ -41,7 +45,9 @@ private:
 
     mutable juce::SpinLock lock;
     std::vector<float> spectrumDb;
+    StatsSnapshot refStats;
     std::atomic<bool> ready { false };
+    std::atomic<bool> statsReady { false };
     std::atomic<bool> busy { false };
     juce::String status;
 };

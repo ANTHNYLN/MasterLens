@@ -127,6 +127,8 @@ void AnalysisEngine::prepare (double sampleRate, int numChannels)
         lp2kB[ch].designLowPass (fs, 2000.0, 0.7071067811865476);
         hp2kA[ch].designHighPass (fs, 2000.0, 0.7071067811865476);
         hp2kB[ch].designHighPass (fs, 2000.0, 0.7071067811865476);
+        subLpA[ch].designLowPass (fs, 40.0, 0.7071067811865476);
+        subLpB[ch].designLowPass (fs, 40.0, 0.7071067811865476);
     }
 
     truePeak[0].prepare (fs);
@@ -149,11 +151,22 @@ void AnalysisEngine::reset()
         lp2kB[ch].reset();
         hp2kA[ch].reset();
         hp2kB[ch].reset();
+        subLpA[ch].reset();
+        subLpB[ch].reset();
         truePeak[ch].reset();
     }
 
     for (int b = 0; b < 3; ++b)
         bandL2[b] = bandR2[b] = bandLR[b] = bandMid[b] = bandSide[b] = 0.0;
+
+    sumSubL2 = sumSubR2 = 0.0;
+    partialFlatTop = 0.0;
+    partialProcessed = 0.0;
+    flatTopSmooth = 0.0f;
+    subShareSmooth = 0.0f;
+    monoRetainSmooth = 100.0f;
+    monoLowRetainSmooth = 100.0f;
+    prevAbsSp = 0.0f;
 
     for (auto& p : peakRing)
         p = 0.0;
@@ -280,6 +293,20 @@ void AnalysisEngine::process (const juce::AudioBuffer<float>& buffer, Stats& sta
         accumulateBand (1, midL, midR);
         accumulateBand (2, highL, highR);
 
+        // --- sub-bass (< 40 Hz) share ----------------------------------------
+        const float subL = subLpB[0].process (subLpA[0].process (l));
+        const float subR = subLpB[1].process (subLpA[1].process (r));
+        sumSubL2 += (double) subL * subL;
+        sumSubR2 += (double) subR * subR;
+
+        // --- flat-top / plateau density (hard clipping signature) ------------
+        const float absSp = std::abs (sp);
+
+        if (absSp >= 0.985f && std::abs (absSp - prevAbsSp) < 5.0e-5f)
+            ++partialFlatTop;
+
+        prevAbsSp = absSp;
+
         // --- DC offset accumulators ------------------------------------------
         sumL += dl;
         sumR += dr;
@@ -304,6 +331,7 @@ void AnalysisEngine::process (const juce::AudioBuffer<float>& buffer, Stats& sta
     }
 
     partialSamples += numSamples;
+    partialProcessed += numSamples;
     elapsedSamples += (juce::uint32) numSamples;
     stats.elapsed = (double) elapsedSamples / fs;
 
@@ -508,8 +536,58 @@ void AnalysisEngine::finishPartialBlock (Stats& stats)
         stats.lra = computeLra();
     }
 
+    // --- signal integrity: flat tops, sub share, mono fold -------------------
+    {
+        if (partialProcessed > 0.5)
+        {
+            const float pct = (float) (100.0 * partialFlatTop / partialProcessed);
+            flatTopSmooth += (pct - flatTopSmooth) * 0.25f;
+            stats.flatTopPct = flatTopSmooth;
+        }
+
+        const double avgChannel = 0.5 * (sumL2 + sumR2);
+
+        if (avgChannel > 1.0e-12)
+        {
+            // M = (L + R) / 2; retained amplitude = sqrt(E_mid / E_avgChannel).
+            const double ratio = juce::jlimit (0.0, 1.0, sumMid / avgChannel);
+            const float retain = (float) (100.0 * std::sqrt (ratio));
+
+            monoRetainSmooth += (retain - monoRetainSmooth) * 0.25f;
+            stats.monoRetainPct = monoRetainSmooth;
+            stats.monoFoldLossDb = monoRetainSmooth > 0.5f
+                                       ? (float) juce::jlimit (0.0, 30.0,
+                                             -20.0 * std::log10 (monoRetainSmooth / 100.0))
+                                       : 30.0f;
+
+            const double avgLow = 0.5 * (bandL2[0] + bandR2[0]);
+
+            if (avgLow > 1.0e-12)
+            {
+                const double lowRatio = juce::jlimit (0.0, 1.0, bandMid[0] / avgLow);
+                const float lowRetain = (float) (100.0 * std::sqrt (lowRatio));
+
+                monoLowRetainSmooth += (lowRetain - monoLowRetainSmooth) * 0.25f;
+                stats.monoLowRetainPct = monoLowRetainSmooth;
+            }
+
+            const double total = sumL2 + sumR2;
+
+            if (total > 1.0e-12)
+            {
+                const float share = (float) juce::jlimit (0.0, 100.0,
+                                                          100.0 * (sumSubL2 + sumSubR2) / total);
+                subShareSmooth += (share - subShareSmooth) * 0.25f;
+                stats.subSharePct = subShareSmooth;
+            }
+        }
+    }
+
     // --- reset per-partial accumulators --------------------------------------
     partialSamples = 0;
+    partialProcessed = 0.0;
+    sumSubL2 = sumSubR2 = 0.0;
+    partialFlatTop = 0.0;
     sumWeightedK = 0.0;
     sumLR = sumL2 = sumR2 = 0.0;
     sumMid = sumSide = 0.0;

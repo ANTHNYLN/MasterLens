@@ -5,6 +5,26 @@
 
 using ml::T;
 
+namespace
+{
+    /** Keeps the very first window inside the current display, while never
+        going below the supported 900 x 620 base layout. */
+    juce::Point<int> fittedBaseSize (float scale, int width, int height)
+    {
+        if (auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
+        {
+            const auto area = d->userBounds.toNearestInt();
+            const int maxW = juce::jmax (900, (int) std::floor ((float) area.getWidth() * 0.96f / scale));
+            const int maxH = juce::jmax (620, (int) std::floor ((float) area.getHeight() * 0.96f / scale));
+
+            width = juce::jlimit (900, maxW, width);
+            height = juce::jlimit (620, maxH, height);
+        }
+
+        return { width, height };
+    }
+} // namespace
+
 //==============================================================================
 MasterLensAudioProcessorEditor::MasterLensAudioProcessorEditor (MasterLensAudioProcessor& p)
     : juce::AudioProcessorEditor (&p), processor (p)
@@ -17,6 +37,9 @@ MasterLensAudioProcessorEditor::MasterLensAudioProcessorEditor (MasterLensAudioP
     const int storedAppearance = (int) processor.apvts.state.getProperty ("appearance", 1);
     ml::theme::apply (storedAppearance != 0);
     lnf.refreshColours();
+
+    uiScale = computeInitialUiScale();
+    ml::ui::setScale (uiScale);
 
     addAndMakeVisible (rail);
     addAndMakeVisible (detail);
@@ -54,14 +77,25 @@ MasterLensAudioProcessorEditor::MasterLensAudioProcessorEditor (MasterLensAudioP
     addChildComponent (genrePanel);
     genrePanel.setVisible (false);
 
+    settingsPanel.onClose = [this] { settingsPanel.setVisibleAndFocus (false); };
+    settingsPanel.onScaleChanged = [this] (float s) { setUiScale (s, true); };
+    settingsPanel.setScale (uiScale);
+    addChildComponent (settingsPanel);
+    settingsPanel.setVisible (false);
+
     const int storedLanguage = (int) processor.apvts.state.getProperty ("language", 0);
     ml::Localisation::set (storedLanguage == 1 ? ml::Language::english : ml::Language::chinese);
 
     const int storedW = (int) processor.apvts.state.getProperty ("editorWidth", 1180);
     const int storedH = (int) processor.apvts.state.getProperty ("editorHeight", 760);
+    const auto start = fittedBaseSize (uiScale,
+                                       juce::jlimit (900, 1900, storedW),
+                                       juce::jlimit (620, 1400, storedH));
+
     setResizable (true, true);
-    setResizeLimits (900, 620, 1900, 1400);
-    setSize (juce::jlimit (900, 1900, storedW), juce::jlimit (620, 1400, storedH));
+    setResizeLimits (ml::ui::scaled (900), ml::ui::scaled (620),
+                     ml::ui::scaled (1900), ml::ui::scaled (1400));
+    setSize (ml::ui::scaled (start.x), ml::ui::scaled (start.y));
 
     updateTexts();
     syncPresetToParameters();

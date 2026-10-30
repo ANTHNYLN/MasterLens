@@ -26,11 +26,13 @@ public:
 
     /** Used by the offscreen snapshot tool. */
     void setAboutVisible (bool shouldBeVisible) { aboutPanel.setVisibleAndFocus (shouldBeVisible); }
+    void setSettingsVisible (bool shouldBeVisible) { settingsPanel.setVisibleAndFocus (shouldBeVisible); }
     void showGenreInfoForSnapshot() { showGenreInfo(); }
     void setPresetForSnapshot (int index) { presetBox.setSelectedId (index + 1, juce::dontSendNotification); applyPreset (index); }
     void expandFirstIssueForSnapshot();
     void setPageForSnapshot (int page);
     void setThemeForSnapshot (bool useDark);
+    void setScaleForSnapshot (float scale) { setUiScale (scale, false); }
     void captureSnapshotForSnapshot (int slot);
 
 private:
@@ -53,6 +55,9 @@ private:
     void setPage (int index);
     void toggleTheme();
     void applyTheme();
+    void setUiScale (float scale, bool store);
+    float computeInitialUiScale() const;
+    juce::Rectangle<int> baseBounds() const;
     void attachShortcutListener (juce::Component& c);
     void addMarker (double t, int severity, int category, const juce::String& text);
     void addManualMarker (double time);
@@ -69,13 +74,14 @@ private:
     juce::TextButton infoButton;
     juce::Label targetCaption, ceilingCaption;
     juce::Slider targetSlider, ceilingSlider;
-    juce::TextButton holdButton, clearButton, languageButton, aboutButton, themeButton, exportButton;
+    juce::TextButton holdButton, clearButton, languageButton, aboutButton, themeButton, exportButton, settingsButton;
 
     ml::ModuleRail rail;
     ml::DetailArea detail;
     ml::TimelineStrip timeline;
     ml::AboutPanel aboutPanel;
     ml::GenrePanel genrePanel;
+    ml::SettingsPanel settingsPanel;
     ml::SnapshotChip snapshotA { "A" };
     ml::SnapshotChip snapshotB { "B" };
 
@@ -88,6 +94,7 @@ private:
     std::vector<ml::Marker> markers;
     std::vector<ml::TpEvent> tpEvents;
     std::vector<ml::Issue> issueCache;
+    ml::SignalDefects signalDefects;
     std::array<float, 4> bandRatios { 0.0f, 0.0f, 0.0f, 0.0f };
 
     ml::Snapshot snapshots[2];
@@ -97,6 +104,7 @@ private:
     bool frozen = false;
     bool holdFromKeyboard = false;
     bool updatingPreset = false;
+    float uiScale = 2.0f;
     float lraTargetSetting = 8.0f;
     float clipAllowSetting = 0.0f;
     int frameCounter = 0;

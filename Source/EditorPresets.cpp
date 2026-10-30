@@ -21,6 +21,7 @@ void MasterLensAudioProcessorEditor::showGenreInfo()
     if (aboutPanel.isVisible())
         aboutPanel.setVisibleAndFocus (false);
 
+    settingsPanel.setVisibleAndFocus (false);
     genrePanel.show (index, processor.getTargetLufs(), lraTargetSetting, clipAllowSetting);
 }
 

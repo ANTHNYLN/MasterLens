@@ -1,5 +1,6 @@
 #include "Widgets.h"
 #include "../GenreWar.h"
+#include "Logo.h"
 
 namespace ml
 {
@@ -233,6 +234,9 @@ void GenrePanel::paint (juce::Graphics& g)
     g.setFont (uiFont (17.0f, true));
     g.drawText (U8 (en ? e.en : e.zh), l.title.withTrimmedRight (110),
                 juce::Justification::centredLeft, true);
+
+    paintBerryWordmark (g, l.title.withTrimmedLeft (l.title.getWidth() - 104),
+                        theme::textFaint, 8.5f, juce::Justification::right);
 
     g.setColour (theme::textFaint);
     g.setFont (monoFont (11.0f));

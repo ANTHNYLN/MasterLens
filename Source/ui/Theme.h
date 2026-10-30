@@ -2,6 +2,8 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <array>
+
 #include "Advisor.h"
 
 namespace ml
@@ -30,6 +32,45 @@ inline constexpr int cardHeight    = 104;
 inline constexpr int gap           = 12;
 inline constexpr int margin        = 16;
 } // namespace tokens
+
+/** Runtime interface zoom (1.0 - 2.0).
+
+    The editor lays out in base points and applies one AffineTransform to every
+    child, so changing the scale enlarges glyphs, row heights, cards and the
+    window together. Nothing re-flows, so no label can be clipped by a text size
+    change; the whole surface simply becomes bigger.
+*/
+namespace ui
+{
+inline constexpr float minScale = 1.0f;
+inline constexpr float maxScale = 2.0f;
+
+inline constexpr std::array<float, 5> scaleSteps { 1.0f, 1.25f, 1.5f, 1.75f, 2.0f };
+
+inline float scale = 1.0f;
+
+inline void setScale (float s) noexcept
+{
+    scale = juce::jlimit (minScale, maxScale, s);
+}
+
+inline int scaled (int v) noexcept { return juce::roundToInt ((float) v * scale); }
+inline float scaled (float v) noexcept { return v * scale; }
+
+/** Nearest step index for a stored scale factor. */
+inline int stepIndexFor (float s) noexcept
+{
+    int best = 0;
+
+    for (int i = 0; i < (int) scaleSteps.size(); ++i)
+        if (std::abs (scaleSteps[(size_t) i] - s) < std::abs (scaleSteps[(size_t) best] - s))
+            best = i;
+
+    return best;
+}
+
+inline juce::String scaleText (float s) { return juce::String (juce::roundToInt (s * 100.0f)) + "%"; }
+} // namespace ui
 
 /** Runtime palette.
 
@@ -127,6 +168,7 @@ inline juce::String fmtRange (float a, float b, int decimals = 1)
 
 /** Value at or below -99 means "no measurement", never a real reading. */
 inline juce::String fmt1 (float v) { return v <= -99.0f ? noValue() : num (v, 1); }
+inline juce::String fmt2 (float v) { return v <= -99.0f ? noValue() : num (v, 2); }
 inline juce::String fmtDb (float v) { return v <= -99.0f ? noValue() : num (v, 1); }
 
 inline juce::String fmtTime (double seconds)
@@ -160,6 +202,8 @@ public:
 
     void drawLabel (juce::Graphics&, juce::Label&) override;
     void drawTooltip (juce::Graphics&, const juce::String&, int width, int height) override;
+    juce::Rectangle<int> getTooltipBounds (const juce::String&, juce::Point<int> screenPos,
+                                           juce::Rectangle<int> parentArea) override;
 
     juce::Font getComboBoxFont (juce::ComboBox&) override;
     juce::Font getLabelFont (juce::Label&) override;

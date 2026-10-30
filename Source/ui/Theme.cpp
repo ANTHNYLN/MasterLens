@@ -330,8 +330,36 @@ void MasterLensLookAndFeel::drawTooltip (juce::Graphics& g, const juce::String& 
     g.drawRoundedRectangle (r, tokens::radiusControl, 1.0f);
 
     g.setColour (theme::text);
-    g.setFont (uiFont (tokens::aux));
-    g.drawFittedText (text, 8, 0, width - 16, height, juce::Justification::centred, 2, 1.0f);
+    g.setFont (uiFont (tokens::aux * ui::scale));
+    g.drawFittedText (text, 8, 0, width - 16, height, juce::Justification::centred,
+                      juce::jmax (2, juce::roundToInt (3.0f * ui::scale)), 1.0f);
+}
+
+juce::Rectangle<int> MasterLensLookAndFeel::getTooltipBounds (const juce::String& tipText,
+                                                              juce::Point<int> screenPos,
+                                                              juce::Rectangle<int> parentArea)
+{
+    const auto font = uiFont (tokens::aux * ui::scale);
+    const int maxW = juce::roundToInt (360.0f * ui::scale);
+    const int pad = juce::roundToInt (16.0f * ui::scale);
+
+    juce::AttributedString s;
+    s.setJustification (juce::Justification::centred);
+    s.append (tipText, font, theme::text);
+
+    juce::TextLayout layout;
+    layout.createLayout (s, (float) maxW);
+
+    int w = juce::jlimit (80, maxW, juce::roundToInt (layout.getWidth()) + pad);
+    int h = juce::jmax (juce::roundToInt (22.0f * ui::scale),
+                        juce::roundToInt (layout.getHeight()) + juce::roundToInt (8.0f * ui::scale));
+
+    return juce::Rectangle<int> (screenPos.x > parentArea.getCentreX() ? screenPos.x - w - 12
+                                                                      : screenPos.x + 24,
+                                 screenPos.y > parentArea.getCentreY() ? screenPos.y - h - 6
+                                                                      : screenPos.y + 18,
+                                 w, h)
+             .constrainedWithin (parentArea);
 }
 
 juce::Font MasterLensLookAndFeel::getComboBoxFont (juce::ComboBox&) { return uiFont (tokens::label); }
@@ -344,7 +372,9 @@ juce::Font MasterLensLookAndFeel::getLabelFont (juce::Label& label)
     return uiFont (tokens::aux);
 }
 
-juce::Font MasterLensLookAndFeel::getPopupMenuFont() { return uiFont (tokens::label); }
+/** Popup menus live in their own desktop window and are not affected by the
+    editor transform, so their type is scaled here instead. */
+juce::Font MasterLensLookAndFeel::getPopupMenuFont() { return uiFont (tokens::label * ui::scale); }
 juce::Font MasterLensLookAndFeel::getTextButtonFont (juce::TextButton&, int) { return uiFont (tokens::label); }
 
 void MasterLensLookAndFeel::drawPopupMenuBackground (juce::Graphics& g, int width, int height)

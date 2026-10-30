@@ -2,6 +2,8 @@
 
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
+#include "Version.h"
+#include "ui/Logo.h"
 
 /** Offscreen renderer used to verify the editor layout without a screen recorder.
 
@@ -17,6 +19,13 @@ public:
 
     void initialise (const juce::String& commandLine) override
     {
+        if (commandLine.containsIgnoreCase ("logo"))
+        {
+            renderLogo();
+            quit();
+            return;
+        }
+
         english = commandLine.containsIgnoreCase ("en");
         aboutShot = commandLine.containsIgnoreCase ("about");
         expandedShot = commandLine.containsIgnoreCase ("expand");
@@ -25,8 +34,21 @@ public:
         emptyShot = commandLine.containsIgnoreCase ("empty");
         snapShot = commandLine.containsIgnoreCase ("snap");
         genreShot = commandLine.containsIgnoreCase ("info");
+        settingsShot = commandLine.containsIgnoreCase ("settings");
 
-        for (int p = 0; p <= 6; ++p)
+        const int outTag = commandLine.indexOfIgnoreCase ("out=");
+
+        if (outTag >= 0)
+            outSuffix = commandLine.substring (outTag + 4).upToFirstOccurrenceOf (" ", false, false);
+
+        float scale = 1.0f;
+
+        if (commandLine.containsIgnoreCase ("scale200")) scale = 2.0f;
+        else if (commandLine.containsIgnoreCase ("scale175")) scale = 1.75f;
+        else if (commandLine.containsIgnoreCase ("scale150")) scale = 1.5f;
+        else if (commandLine.containsIgnoreCase ("scale125")) scale = 1.25f;
+
+        for (int p = 0; p < ml::numPages; ++p)
             if (commandLine.containsIgnoreCase ("page" + juce::String (p)))
                 pageShot = p;
 
@@ -39,15 +61,23 @@ public:
 
         processor->apvts.state.setProperty ("language", english ? 1 : 0, nullptr);
         processor->apvts.state.setProperty ("appearance", lightShot ? 0 : 1, nullptr);
+        processor->apvts.state.setProperty ("uiScale", scale, nullptr);
 
         editor = std::make_unique<MasterLensAudioProcessorEditor> (*processor);
-        editor->setSize (smallShot ? 900 : 1280, smallShot ? 620 : 820);
+        editor->setSize (juce::roundToInt ((smallShot ? 900.0f : 1280.0f) * scale),
+                         juce::roundToInt ((smallShot ? 620.0f : 820.0f) * scale));
+
+        std::printf ("UiShot %s page=%d scale=%.2f size=%dx%d\n", ml::kVersion, pageShot,
+                     scale, editor->getWidth(), editor->getHeight());
 
         if (pageShot >= 0)
             editor->setPageForSnapshot (pageShot);
 
         if (aboutShot)
             editor->setAboutVisible (true);
+
+        if (settingsShot)
+            editor->setSettingsVisible (true);
 
         for (int p = 0; p < 40; ++p)
             if (commandLine.contains ("preset" + juce::String (p)))
@@ -136,6 +166,31 @@ private:
         }
     }
 
+    void renderLogo()
+    {
+        const auto write = [this] (int size, const juce::String& relative)
+        {
+            juce::Image image (juce::Image::ARGB, size, size, true);
+            juce::Graphics g (image);
+
+            ml::paintLogoMark (g, juce::Rectangle<float> (0.0f, 0.0f, (float) size, (float) size));
+
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (relative);
+            file.getParentDirectory().createDirectory();
+            file.deleteFile();
+
+            if (auto stream = std::unique_ptr<juce::FileOutputStream> (file.createOutputStream()))
+            {
+                juce::PNGImageFormat png;
+                png.writeImageToStream (image, *stream);
+                std::printf ("wrote %s (%d px)\n", relative.toRawUTF8(), size);
+            }
+        };
+
+        write (1024, "packaging/icon.png");
+        write (768, "docs/logo.png");
+    }
+
     void saveAndQuit()
     {
         if (expandedShot)
@@ -168,7 +223,8 @@ private:
         std::printf ("integrated=%.2f  tp=%.2f  lra=%.2f  corr=%.2f  width=%.1f  lowside=%.1f\n",
                      s.integrated, s.truePeakDb, s.lra, s.correlation, s.widthPct, s.lowSidePct);
 
-        const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 2.0f);
+        const auto res = editor->getWidth() > 1600 ? 1.0f : 2.0f;
+        const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, res);
 
         juce::String name = "ui_shot";
 
@@ -181,6 +237,8 @@ private:
         if (emptyShot)    name << "_empty";
         if (snapShot)     name << "_snap";
         if (genreShot)    name << "_genre";
+        if (settingsShot) name << "_settings";
+        if (outSuffix.isNotEmpty()) name << "_" << outSuffix;
 
         const auto output = juce::File::getCurrentWorkingDirectory().getChildFile (name + ".png");
 
@@ -193,6 +251,8 @@ private:
             if (auto s = std::unique_ptr<juce::FileOutputStream> (copy.createOutputStream()))
                 png.writeImageToStream (image, *s);
         }
+
+        output.deleteFile();
 
         if (auto stream = std::unique_ptr<juce::FileOutputStream> (output.createOutputStream()))
             png.writeImageToStream (image, *stream);
@@ -209,6 +269,8 @@ private:
     bool lightShot = false;
     bool emptyShot = false;
     bool snapShot = false;
+    bool settingsShot = false;
+    juce::String outSuffix;
     int pageShot = -1;
 };
 

@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "../dsp/AnalysisEngine.h"
+#include "../dsp/DefectAnalyzer.h"
 
 namespace ml
 {
@@ -33,7 +34,8 @@ public:
     void update (const StatsSnapshot& stats,
                  const std::vector<float>& bandDeviations,
                  float targetLufs,
-                 float ceilingDb);
+                 float ceilingDb,
+                 const SignalDefects& defects);
 
     const std::vector<Issue>& getIssues() const noexcept { return visible; }
 

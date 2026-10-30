@@ -7,7 +7,8 @@ VST3_DIR="$HOME/Library/Audio/Plug-Ins/VST3"
 AU_DIR="$HOME/Library/Audio/Plug-Ins/Components"
 APP_DIR="$HOME/Applications"
 
-echo "MasterLens · 母带响度与混音质检"
+echo "MasterLens · 母带响度 / 平台归一化 / 信号健康"
+echo "by BerryStudio · Developer KNGTNPT"
 echo "========================================"
 
 mkdir -p "$VST3_DIR" "$AU_DIR" "$APP_DIR"
@@ -43,6 +44,8 @@ echo "  独立版 : $APP_DIR/MasterLens.app"
 echo ""
 echo "请重启 DAW，在「音频效果 / Analyzer / 分析」分类下找到 MasterLens，"
 echo "把它插在总线（Master Bus）或母带链的最后一级即可开始分析。"
+echo ""
+echo "BerryStudio · 2026"
 echo ""
 read -n 1 -s -r -p "按任意键关闭窗口..."
 echo

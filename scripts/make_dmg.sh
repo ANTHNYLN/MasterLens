@@ -37,7 +37,7 @@ done
 echo "== 4/4 生成 DMG =="
 mkdir -p "$DIST"
 rm -f "$DIST/MasterLens-$VERSION-macOS.dmg"
-hdiutil create -volname "MasterLens $VERSION" -srcfolder "$STAGE" \
+hdiutil create -volname "MasterLens $VERSION - BerryStudio" -srcfolder "$STAGE" \
     -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov \
     "$DIST/MasterLens-$VERSION-macOS.dmg" > /dev/null
 

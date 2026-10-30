@@ -56,14 +56,27 @@ void MasterLensAudioProcessorEditor::buildControls()
         ml::Localisation::set (next);
         processor.apvts.state.setProperty ("language", next == ml::Language::english ? 1 : 0, nullptr);
         updateTexts();
+        settingsPanel.refreshTexts();
         detail.refreshTexts();
         detail.invalidateDisplays();
         repaint();
     };
     addAndMakeVisible (languageButton);
 
-    aboutButton.onClick = [this] { aboutPanel.setVisibleAndFocus (! aboutPanel.isVisible()); };
+    aboutButton.onClick = [this]
+    {
+        settingsPanel.setVisibleAndFocus (false);
+        aboutPanel.setVisibleAndFocus (! aboutPanel.isVisible());
+    };
     addAndMakeVisible (aboutButton);
+
+    settingsButton.onClick = [this]
+    {
+        aboutPanel.setVisibleAndFocus (false);
+        genrePanel.setVisibleAndFocus (false);
+        settingsPanel.setVisibleAndFocus (! settingsPanel.isVisible());
+    };
+    addAndMakeVisible (settingsButton);
 
     themeButton.onClick = [this] { toggleTheme(); };
     addAndMakeVisible (themeButton);

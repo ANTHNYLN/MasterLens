@@ -12,10 +12,11 @@ namespace ml
 std::vector<CheckResult> buildChecklist (const StatsSnapshot& s,
                                          float targetLufs,
                                          float ceilingDb,
-                                         const std::vector<float>& bandDevs)
+                                         const std::vector<float>& bandDevs,
+                                         const SignalDefects& defects)
 {
     std::vector<CheckResult> rows;
-    rows.reserve (9);
+    rows.reserve (15);
 
     const bool live = s.hasSignal;
 
@@ -144,6 +145,74 @@ std::vector<CheckResult> buildChecklist (const StatsSnapshot& s,
         add (T ("频段平衡 / 参考", "Tonal balance / reference"),
              valid ? T ("最大偏差 ", "Max deviation ") + num (worst) + " dB" : noValue(), sev,
              T ("各频段相对参考 ≤ ±4.5 dB", "Every band within +/- 4.5 dB of the reference"));
+    }
+
+    // 10-15) signal integrity (only failing layers, plus one pass summary)
+    if (defects.ready)
+    {
+        int layersOver = 0;
+
+        if (defects.distortionRisk >= 55.0f)
+        {
+            ++layersOver;
+            add (T ("谐波 / 互调失真", "Harmonic / IMD"),
+                 T ("谐波 +", "harm +") + num (defects.harmonicExcessDb) + " dB",
+                 defects.flatTopPct > 0.5f ? Severity::critical : Severity::warn,
+                 T ("2–5 次谐波高于局部谱底 5 dB 以上；平顶样本 ",
+                    "2nd-5th harmonics above the local floor; flat tops ")
+                     + num (defects.flatTopPct, 2) + "%");
+        }
+
+        if (defects.aliasRisk >= 55.0f)
+        {
+            ++layersOver;
+            add (T ("混叠 / 高频完整性", "Aliasing / HF"),
+                 T ("风险 ", "risk ") + juce::String (juce::roundToInt (defects.aliasRisk)),
+                 Severity::warn,
+                 T ("16–20 kHz 高于自然滚降 ", "16-20 kHz above natural roll-off ")
+                     + sgn (defects.aliasExcessDb) + " dB");
+        }
+
+        if (defects.subRisk >= 55.0f)
+        {
+            ++layersOver;
+            add (T ("超低频堆积", "Sub build-up"),
+                 num (defects.subSharePct) + "% < 40 Hz", Severity::info,
+                 T ("40 Hz 以下能量占比过高；收紧 20–40 Hz",
+                    "Too much energy below 40 Hz; tighten 20-40 Hz"));
+        }
+
+        if (defects.transientScore < 45.0f)
+        {
+            ++layersOver;
+            add (T ("瞬态完整性", "Transient integrity"),
+                 juce::String (juce::roundToInt (defects.transientScore)) + "/100",
+                 Severity::warn,
+                 T ("PLR ", "PLR ") + num (s.getPlr()) + T (" dB，攻击被压平", " dB - attacks flattened"));
+        }
+
+        if (defects.monoRisk >= 40.0f)
+        {
+            ++layersOver;
+            add (T ("单声道折叠损失", "Mono fold loss"),
+                 num (defects.monoFoldLossDb) + " dB",
+                 defects.monoRisk >= 70.0f ? Severity::critical : Severity::warn,
+                 T ("折叠后保留 ", "Retained ") + num (defects.monoRetainPct) + "%");
+        }
+
+        if (defects.maskingRisk >= 55.0f)
+        {
+            ++layersOver;
+            add (T ("中频掩蔽风险", "Mid masking"),
+                 sgn (defects.maskingDb) + " dB", Severity::info,
+                 T ("200–800 Hz 相对 1–4 kHz 偏高", "200-800 Hz over 1-4 kHz"));
+        }
+
+        if (layersOver == 0)
+            add (T ("信号完整性", "Signal integrity"),
+                 T ("6 层正常", "6 layers OK"), Severity::good,
+                 T ("失真、混叠、超低、瞬态、单声道与掩蔽均未越线",
+                    "Distortion, aliasing, sub, transients, mono and masking are all in range"));
     }
 
     return rows;

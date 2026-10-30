@@ -44,11 +44,13 @@ void ReferenceSpectrum::clear()
     {
         const juce::SpinLock::ScopedLockType sl (lock);
         spectrumDb.clear();
+        refStats = StatsSnapshot {};
         status = "empty";
     }
 
     pendingFiles.clear();
     ready.store (false);
+    statsReady.store (false);
     busy.store (false);
 }
 
@@ -67,6 +69,12 @@ std::vector<float> ReferenceSpectrum::getSpectrumDb() const
 {
     const juce::SpinLock::ScopedLockType sl (lock);
     return spectrumDb;
+}
+
+StatsSnapshot ReferenceSpectrum::getStats() const
+{
+    const juce::SpinLock::ScopedLockType sl (lock);
+    return refStats;
 }
 
 void ReferenceSpectrum::run()
@@ -90,6 +98,13 @@ void ReferenceSpectrum::run()
 
     std::vector<float> fftData ((size_t) fftSize * 2, 0.0f);
     std::vector<float> block ((size_t) fftSize, 0.0f);
+
+    AnalysisEngine refEngine;
+    Stats refEngineStats;
+    resetStats (refEngineStats);
+    refEngine.prepare (pendingSampleRate, 2);
+
+    int blockIndex = 0;
 
     for (const auto& path : pendingFiles)
     {
@@ -140,6 +155,13 @@ void ReferenceSpectrum::run()
                 power[(size_t) b] += m * m;
             }
 
+            // Feed every other hop to the loudness engine: hops are half the
+            // window, so this covers the file exactly once without overlap.
+            // One engine for the whole set keeps integrated loudness and LRA
+            // cumulative across the reference tracks.
+            if ((blockIndex++ % 2) == 0)
+                refEngine.process (readBuffer, refEngineStats, fftSize);
+
             ++totalBlocks;
         }
     }
@@ -164,7 +186,9 @@ void ReferenceSpectrum::run()
     {
         const juce::SpinLock::ScopedLockType sl (lock);
         spectrumDb = std::move (result);
+        refStats = ml::snapshot (refEngineStats);
         status = "ready";
+        statsReady.store (refStats.hasSignal);
     }
 
     ready.store (true);

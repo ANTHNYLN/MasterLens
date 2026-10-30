@@ -62,6 +62,13 @@ struct Stats
     std::atomic<float>  bandSideLow    { 0.0f };        // side/mid, %
     std::atomic<float>  bandSideMid    { 0.0f };
     std::atomic<float>  bandSideHigh   { 0.0f };
+
+    // --- v1.4.2 signal integrity ----------------------------------------
+    std::atomic<float>  monoFoldLossDb   { 0.0f };     // level lost in a mono fold
+    std::atomic<float>  monoRetainPct    { 100.0f };    // amplitude kept after fold
+    std::atomic<float>  monoLowRetainPct { 100.0f };    // same, below 150 Hz
+    std::atomic<float>  subSharePct      { 0.0f };      // < 40 Hz share of total energy
+    std::atomic<float>  flatTopPct       { 0.0f };      // % of samples on a flat top
 };
 
 
@@ -144,6 +151,12 @@ struct StatsSnapshot
     float  bandCorrLow = 0.0f, bandCorrMid = 0.0f, bandCorrHigh = 0.0f;
     float  bandSideLow = 0.0f, bandSideMid = 0.0f, bandSideHigh = 0.0f;
 
+    float  monoFoldLossDb = 0.0f;
+    float  monoRetainPct = 100.0f;
+    float  monoLowRetainPct = 100.0f;
+    float  subSharePct = 0.0f;
+    float  flatTopPct = 0.0f;
+
     float getPlr() const noexcept { return integrated > -70.0f ? juce::jmax (0.0f, truePeakDb - integrated) : 0.0f; }
 };
 
@@ -180,6 +193,11 @@ inline StatsSnapshot snapshot (const Stats& s) noexcept
     r.bandSideLow = s.bandSideLow.load();
     r.bandSideMid = s.bandSideMid.load();
     r.bandSideHigh = s.bandSideHigh.load();
+    r.monoFoldLossDb = s.monoFoldLossDb.load();
+    r.monoRetainPct = s.monoRetainPct.load();
+    r.monoLowRetainPct = s.monoLowRetainPct.load();
+    r.subSharePct = s.subSharePct.load();
+    r.flatTopPct = s.flatTopPct.load();
     return r;
 }
 
@@ -195,6 +213,8 @@ inline void resetStats (Stats& s) noexcept
     s.truePeakMaxTime = 0.0f;  s.spikeCount = 0;         s.lastSpikeTime = 0.0;
     s.bandCorrLow = 0.0f;      s.bandCorrMid = 0.0f;     s.bandCorrHigh = 0.0f;
     s.bandSideLow = 0.0f;      s.bandSideMid = 0.0f;     s.bandSideHigh = 0.0f;
+    s.monoFoldLossDb = 0.0f;   s.monoRetainPct = 100.0f; s.monoLowRetainPct = 100.0f;
+    s.subSharePct = 0.0f;      s.flatTopPct = 0.0f;
 }
 
 //==============================================================================
@@ -316,6 +336,7 @@ private:
     Biquad hp150A[2], hp150B[2];          // LR4 high pass @ 150 Hz
     Biquad lp2kA[2], lp2kB[2];            // LR4 low pass @ 2 kHz
     Biquad hp2kA[2], hp2kB[2];            // LR4 high pass @ 2 kHz
+    Biquad subLpA[2], subLpB[2];          // LR4 low pass @ 40 Hz (sub-bass share)
     TruePeakDetector truePeak[2];
 
     // per-band accumulators: 0 = <150 Hz, 1 = 150 Hz..2 kHz, 2 = >2 kHz
@@ -337,6 +358,15 @@ private:
     double sumL = 0.0, sumR = 0.0;
     double sumMid = 0.0, sumSide = 0.0;
     double sumLowMid = 0.0, sumLowSide = 0.0;
+    double sumSubL2 = 0.0, sumSubR2 = 0.0;
+
+    double partialFlatTop = 0.0;
+    double partialProcessed = 0.0;
+    float  flatTopSmooth = 0.0f;
+    float  subShareSmooth = 0.0f;
+    float  monoRetainSmooth = 100.0f;
+    float  monoLowRetainSmooth = 100.0f;
+    float  prevAbsSp = 0.0f;
 
     double partialMaxTruePeak = 0.0;
     double partialMaxSamplePeak = 0.0;
