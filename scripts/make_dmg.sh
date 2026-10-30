@@ -17,7 +17,7 @@ echo "== 1/4 配置 ($ARCHS) =="
     -G "Unix Makefiles" -DCMAKE_OSX_ARCHITECTURES="$ARCHS" > /dev/null
 
 echo "== 2/4 编译 =="
-"$CMAKE_BIN" --build "$BUILD" --config Release --target MasterLens -j 10
+"$CMAKE_BIN" --build "$BUILD" --config Release -j 8
 
 echo "== 3/4 准备 DMG 内容 =="
 rm -rf "$STAGE"
