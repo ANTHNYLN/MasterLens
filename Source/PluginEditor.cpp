@@ -36,6 +36,24 @@ MasterLensAudioProcessorEditor::MasterLensAudioProcessorEditor (MasterLensAudioP
     addChildComponent (aboutPanel);
     aboutPanel.setVisible (false);
 
+    lraTargetSetting = (float) processor.apvts.state.getProperty ("lraTarget", 8.0);
+    clipAllowSetting = (float) processor.apvts.state.getProperty ("clipAllowance", 0.0);
+
+    genrePanel.onClose = [this] { genrePanel.setVisibleAndFocus (false); };
+    genrePanel.onSettingsChanged = [this] (float lraTarget, float clipAllow)
+    {
+        lraTargetSetting = lraTarget;
+        clipAllowSetting = clipAllow;
+        processor.apvts.state.setProperty ("lraTarget", lraTarget, nullptr);
+        processor.apvts.state.setProperty ("clipAllowance", clipAllow, nullptr);
+    };
+    genrePanel.onTargetChanged = [this] (float target)
+    {
+        setParameter ("targetLufs", target);
+    };
+    addChildComponent (genrePanel);
+    genrePanel.setVisible (false);
+
     const int storedLanguage = (int) processor.apvts.state.getProperty ("language", 0);
     ml::Localisation::set (storedLanguage == 1 ? ml::Language::english : ml::Language::chinese);
 

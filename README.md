@@ -25,6 +25,21 @@ Build: `./scripts/make_dmg.sh` (universal binary, ad-hoc signed).
 
 ---
 
+## 1.4.1 更新
+
+- **每个曲风的「?」科普面板（新增）**：下拉菜单左侧出现 `?` 按钮，点开显示当前曲风的**响度战争实况**——该风格已发行作品的实际响度区间（如摇滚 −11 ~ −8 LUFS、古典 −24 ~ −18 LUFS）、为什么会被压到那个程度，以及该曲风在归一化时代还有没有收益。平台条目显示规范本身（-14/-16/-23 LUFS 与 dBTP 上限）。
+- **响度战争目标滑块（新增）**：面板内三个滑块可直接调
+  - `目标响度 LUFS`（−30 ~ −5，同步到顶部参数条与所有指标卡）
+  - `LRA 目标 LU`（1 ~ 20，默认 8）：你希望保留的动态范围
+  - `允许削波 dB`（0 ~ 3）：能接受用削波换响度的幅度；≥1.5 dB 时面板会提示「瞬态上会听出来」
+  三项设置随工程保存（`lraTarget` / `clipAllowance`）。
+- **具体插件调整建议（新增）**：面板下方按所选目标**实时生成**可执行建议——建议链路（总线 EQ → 慢压缩 → 饱和 → 削波 → 限幅器）、压缩比例与 attack、限幅器 ceiling / 目标增益衰减 / release、低于或高于目标时的 0.5 dB 步进流程、LRA 不足时该降比例还是让削波吃峰值。
+  例：目标 −9.5 LUFS 时给出「比例 2:1，约 4 dB GR，release 120 ms，ceiling −1.0 dBTP」；目标 −16 LUFS 时改为「比例 1.5:1，1 dB GR，release 400 ms」。
+- **修复**：等宽字体缺少中文字形导致的中文乱码（建议文字、`±` 等符号）；多行文本行距重叠。
+- 版本号 **1.4.1**。
+
+---
+
 ## 1.4 更新
 
 - **曲风参考目标（新增）**：预设菜单从 8 项平台预设扩展为 **36 个可选目标 + 自定义**，分「平台 / 规范」「曲风参考」「手动设定」三组：
@@ -54,7 +69,7 @@ Build: `./scripts/make_dmg.sh` (universal binary, ad-hoc signed).
 > Windows 安装包：本机为 macOS，交叉编译 Windows 需要 MSVC / MinGW 工具链。仓库已附带
 > `.github/workflows/build.yml`（Windows x64 + ARM64 两个矩阵任务，用 MSVC 构建并调用 NSIS
 > `packaging/installer.nsi` 生成安装包）以及 `packaging/installer.nsi`。推送 `v*` 标签即可在
-> GitHub Actions 上产出 `MasterLens-1.4.0-Windows-x64.exe` 与 `-arm64.exe`。
+> GitHub Actions 上产出 `MasterLens-1.4.1-Windows-x64.exe` 与 `-arm64.exe`。
 
 ---
 

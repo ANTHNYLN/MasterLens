@@ -14,6 +14,16 @@ void MasterLensAudioProcessorEditor::applyPreset (int index)
     setParameter ("tpCeiling", ml::presets::entries[index].ceiling);
 }
 
+void MasterLensAudioProcessorEditor::showGenreInfo()
+{
+    const int index = juce::jlimit (0, ml::presets::count - 1, presetBox.getSelectedId() - 1);
+
+    if (aboutPanel.isVisible())
+        aboutPanel.setVisibleAndFocus (false);
+
+    genrePanel.show (index, processor.getTargetLufs(), lraTargetSetting, clipAllowSetting);
+}
+
 void MasterLensAudioProcessorEditor::syncPresetToParameters()
 {
     if (updatingPreset)

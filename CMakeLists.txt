@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(MasterLens VERSION 1.4.0 LANGUAGES C CXX)
+project(MasterLens VERSION 1.4.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -14,7 +14,7 @@ endif()
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/.tools/JUCE ${CMAKE_BINARY_DIR}/JUCE EXCLUDE_FROM_ALL)
 
 juce_add_plugin(MasterLens
-    VERSION 1.4.0
+    VERSION 1.4.1
     COMPANY_NAME "OrchAudio"
     BUNDLE_ID "com.orchaudio.masterlens"
     PLUGIN_MANUFACTURER_CODE OrcA
@@ -57,6 +57,7 @@ set(MASTERLENS_SOURCES
     Source/ui/History.cpp
     Source/ui/IssueList.cpp
     Source/ui/About.cpp
+    Source/ui/GenreInfo.cpp
     Source/ui/Checklist.cpp
     Source/ui/Rail.cpp
     Source/ui/Timeline.cpp

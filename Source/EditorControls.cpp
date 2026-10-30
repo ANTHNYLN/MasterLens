@@ -8,6 +8,12 @@ void MasterLensAudioProcessorEditor::buildControls()
     presetBox.onChange = [this] { applyPreset (presetBox.getSelectedId() - 1); };
     addAndMakeVisible (presetBox);
 
+    infoButton.setButtonText ("?");
+    infoButton.setTooltip (T ("曲风参考：这个曲风的实际发行响度与响度战争背景",
+                              "Genre reference: what released masters measure and why"));
+    infoButton.onClick = [this] { showGenreInfo(); };
+    addAndMakeVisible (infoButton);
+
     const auto captionFont = ml::uiFont (ml::tokens::label);
 
     targetCaption.setFont (captionFont);

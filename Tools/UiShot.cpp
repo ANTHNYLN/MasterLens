@@ -24,6 +24,7 @@ public:
         lightShot = commandLine.containsIgnoreCase ("light");
         emptyShot = commandLine.containsIgnoreCase ("empty");
         snapShot = commandLine.containsIgnoreCase ("snap");
+        genreShot = commandLine.containsIgnoreCase ("info");
 
         for (int p = 0; p <= 6; ++p)
             if (commandLine.containsIgnoreCase ("page" + juce::String (p)))
@@ -47,6 +48,9 @@ public:
 
         if (aboutShot)
             editor->setAboutVisible (true);
+
+        if (genreShot)
+            editor->showGenreInfoForSnapshot();
 
         juce::Timer::callAfterDelay (2500, [this] { saveAndQuit(); });
     }
@@ -172,6 +176,7 @@ private:
         if (lightShot)    name << "_light";
         if (emptyShot)    name << "_empty";
         if (snapShot)     name << "_snap";
+        if (genreShot)    name << "_genre";
 
         const auto output = juce::File::getCurrentWorkingDirectory().getChildFile (name + ".png");
 
@@ -194,7 +199,7 @@ private:
     std::unique_ptr<MasterLensAudioProcessor> processor;
     std::unique_ptr<MasterLensAudioProcessorEditor> editor;
     bool english = false;
-    bool aboutShot = false;
+    bool aboutShot = false, genreShot = false;
     bool expandedShot = false;
     bool smallShot = false;
     bool lightShot = false;

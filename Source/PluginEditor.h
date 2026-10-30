@@ -26,6 +26,7 @@ public:
 
     /** Used by the offscreen snapshot tool. */
     void setAboutVisible (bool shouldBeVisible) { aboutPanel.setVisibleAndFocus (shouldBeVisible); }
+    void showGenreInfoForSnapshot() { showGenreInfo(); }
     void expandFirstIssueForSnapshot();
     void setPageForSnapshot (int page);
     void setThemeForSnapshot (bool useDark);
@@ -37,6 +38,7 @@ private:
     void updateTexts();
     void updateRail();
     void applyPreset (int index);
+    void showGenreInfo();
     void syncPresetToParameters();
     void resetAnalysis();
     void exportReport();
@@ -63,6 +65,7 @@ private:
     juce::TooltipWindow tooltipWindow { this, 650 };
 
     juce::ComboBox presetBox;
+    juce::TextButton infoButton;
     juce::Label targetCaption, ceilingCaption;
     juce::Slider targetSlider, ceilingSlider;
     juce::TextButton holdButton, clearButton, languageButton, aboutButton, themeButton, exportButton;
@@ -71,6 +74,7 @@ private:
     ml::DetailArea detail;
     ml::TimelineStrip timeline;
     ml::AboutPanel aboutPanel;
+    ml::GenrePanel genrePanel;
     ml::SnapshotChip snapshotA { "A" };
     ml::SnapshotChip snapshotB { "B" };
 
@@ -92,6 +96,8 @@ private:
     bool frozen = false;
     bool holdFromKeyboard = false;
     bool updatingPreset = false;
+    float lraTargetSetting = 8.0f;
+    float clipAllowSetting = 0.0f;
     int frameCounter = 0;
     juce::String lastStatsSignature;
     int tick = 0;

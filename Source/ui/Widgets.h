@@ -269,5 +269,41 @@ public:
 private:
     juce::TextButton closeButton;
 };
+//==============================================================================
+/** Loudness-war explainer + target controls for the selected genre.
+
+    Opens as a full-size overlay (same scrim pattern as AboutPanel) and shows:
+    what released masters of that style measure, why, three sliders that drive
+    the target loudness / LRA goal / clipping allowance, and a concrete chain
+    recommendation derived from those numbers.
+*/
+class GenrePanel : public juce::Component
+{
+public:
+    GenrePanel();
+
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void mouseDown (const juce::MouseEvent&) override;
+
+    void show (int presetIndex, float target, float lraTarget, float clipAllow);
+    void setVisibleAndFocus (bool shouldBeVisible);
+
+    std::function<void (float lraTarget, float clipAllow)> onSettingsChanged;
+    std::function<void (float targetLufs)> onTargetChanged;
+    std::function<void()> onClose;
+
+private:
+    void refreshTexts();
+    juce::String adviceText() const;
+
+    juce::Slider loudness, lra, clip;
+    juce::Label loudnessCaption, lraCaption, clipCaption;
+    juce::TextButton closeButton;
+
+    int presetIndex = 0;
+    bool updating = false;
+    juce::String bodyText, factsText;
+};
 } // namespace ml
 
