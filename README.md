@@ -16,11 +16,25 @@ macOS / Windows 音频总线插件（VST3 / AU / 独立版），C++17 + JUCE 8�
 - **Loudness (ITU-R BS.1770-4 / EBU R128)**: integrated with absolute + relative gating, momentary, short-term, LRA (EBU Tech 3342), PLR, and 4× oversampled true peak.
 - **Mix diagnostics**: sample clipping, inter-sample overs, click/edit points, DC offset (4 s true mean), channel correlation, stereo width, mono-ness below 120 Hz, and a 10-band tonal balance referenced to pink-noise-per-octave energy — reported as concrete problems (mud, harshness, sibilance, missing air, sub excess, low-mid hole, bright/dark tilt, spectral holes) with bilingual explanations and fixes.
 - **Visuals**: 4096-point FFT spectrum at 30 fps on a log axis with peak hold, 3-minute short-term loudness history with target band, correlation/width/low-end meters.
-- **UI**: light card layout, resizable, switch between Chinese and English with one click (stored in plug-in state), exportable text report.
+- **UI**: dark professional theme (light theme included, one-click toggle), resizable, bilingual Chinese/English (stored in plug-in state), keyboard shortcuts, A/B snapshot compare, exportable TXT / JSON / CSV report.
+- **Targets**: 36 static delivery references — 8 platform/broadcast specs (Spotify, Apple Music, YouTube, Tidal, podcast, audiobook, EBU R128) plus 28 genre references (club/EDM, hip-hop, rock, metal, pop, folk, jazz, classical, film score…), each carrying target LUFS, dBTP ceiling and a recommended LRA window. Picking one sets both target parameters; "Custom" leaves them manual.
 - **Verified**: `auval` passes, 17 offline DSP assertions pass (incl. −23.00 LUFS R128 calibration point), ~0.2 % of one core at 48 kHz stereo.
 - **Install**: open the DMG, run `安装 Install.command`, restart the DAW, insert on the master bus.
 
 Build: `./scripts/make_dmg.sh` (universal binary, ad-hoc signed).
+
+---
+
+## 1.4 更新
+
+- **曲风参考目标（新增）**：预设菜单从 8 项平台预设扩展为 **36 个可选目标 + 自定义**，分「平台 / 规范」「曲风参考」「手动设定」三组：
+  - 平台 / 规范（8）：流媒体通用、Spotify、Apple Music、YouTube、Tidal、播客、有声书、EBU R128 −23 LUFS
+  - 曲风参考（28）：俱乐部 / 舞曲 −8、EDM / 电子 −8、浩室 / 科技舞曲 −8.5、鼓打贝斯 −7.5、Dubstep −7.5、合成器流行 −9、Lo-fi −14、环境 −18、流行 −9.5、嘻哈 / Trap −9、R&B / Soul −11、K-Pop −9、拉丁 −10、雷鬼 −12、摇滚 −10、现代摇滚 −9、金属 −9、朋克 −9.5、独立 / 另类 −11、布鲁斯 −14、乡村 −12、民谣 −14、爵士 −16、原声 / 器乐 −16、古典 −20、影视配乐 −20、游戏音频 −16、短视频 −14
+- **每条目标自带三组参考值**：目标 LUFS、真峰值上限 dBTP、建议 LRA 动态区间；选中即同时写入目标响度与真峰值上限两个参数，悬停提示显示完整参考值（如 `Jazz −16 LUFS | TP −1.0 dBTP | LRA 10-16 LU`）。
+- 参考表是写死的静态数据（`Source/Presets.h`），运行时不联网、不学习；新增曲风只需加一行。
+- **修复**：分隔符 `·`、`±` 在部分字体下渲染为 `Â·` / `Â±` 的乱码（改为 ASCII 输出）；预设选择改由 ComboBox ID 驱动，插入分组标题后不会错位。
+- **打包链修复**：`make_dmg.sh` 现在构建全部目标（此前只重编共享库，可能把旧插件打进 DMG），版本号改为从 `Source/Version.h` 自动读取。
+- 版本号 **1.4.0**。
 
 ---
 
@@ -40,7 +54,7 @@ Build: `./scripts/make_dmg.sh` (universal binary, ad-hoc signed).
 > Windows 安装包：本机为 macOS，交叉编译 Windows 需要 MSVC / MinGW 工具链。仓库已附带
 > `.github/workflows/build.yml`（Windows x64 + ARM64 两个矩阵任务，用 MSVC 构建并调用 NSIS
 > `packaging/installer.nsi` 生成安装包）以及 `packaging/installer.nsi`。推送 `v*` 标签即可在
-> GitHub Actions 上产出 `MasterLens-1.3.0-Windows-x64.exe` 与 `-arm64.exe`。
+> GitHub Actions 上产出 `MasterLens-1.4.0-Windows-x64.exe` 与 `-arm64.exe`。
 
 ---
 
