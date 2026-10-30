@@ -27,6 +27,7 @@ public:
     /** Used by the offscreen snapshot tool. */
     void setAboutVisible (bool shouldBeVisible) { aboutPanel.setVisibleAndFocus (shouldBeVisible); }
     void showGenreInfoForSnapshot() { showGenreInfo(); }
+    void setPresetForSnapshot (int index) { presetBox.setSelectedId (index + 1, juce::dontSendNotification); applyPreset (index); }
     void expandFirstIssueForSnapshot();
     void setPageForSnapshot (int page);
     void setThemeForSnapshot (bool useDark);

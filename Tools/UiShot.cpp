@@ -49,6 +49,10 @@ public:
         if (aboutShot)
             editor->setAboutVisible (true);
 
+        for (int p = 0; p < 40; ++p)
+            if (commandLine.contains ("preset" + juce::String (p)))
+                editor->setPresetForSnapshot (p);
+
         if (genreShot)
             editor->showGenreInfoForSnapshot();
 
