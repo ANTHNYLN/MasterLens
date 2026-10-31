@@ -6,7 +6,9 @@
 by **BerryStudio** · developer **KNGTNPT**<br>
 macOS / Windows 音频总线插件（VST3 / AU / 独立版），C++17 + JUCE 8。
 
-*Bilingual mastering loudness meter, platform-normalisation simulator and signal-integrity inspector for macOS and Windows — VST3, AU and standalone, built with C++17 and JUCE 8. Zero latency, bit-transparent bypass; only an explicit risk audition changes the output.*
+> 语气说明：本 README 含约 **10% 药娘发言成分**，用来把技术讲得软一点、好读一点；LUFS、dBTP、阈值和交付标准仍然是 100% 认真的。会小声“呜呜”，但不会在数字上乱来。
+
+插件插在总线 / 母带链最后一级，默认**零延迟、逐位旁路**，不碰你的音频；只有你主动点“试听”时，才会临时把输出换成所选频段或问题片段。它不负责替你把歌变好听（这个还是得你来），它负责在你觉得“应该差不多了吧”的时候，把响度、平台后果、信号损伤和专辑一致性摊开给你看。
 
 ![MasterLens 界面](docs/screenshot.png)
 
@@ -14,232 +16,258 @@ macOS / Windows 音频总线插件（VST3 / AU / 独立版），C++17 + JUCE 8�
 
 ![曲风目标与平台交付要求](docs/target-1.5.1.png)
 
-插件默认**不处理任何音频**（零延迟、逐位旁路），只做测量、归一化后果模拟与信号缺陷诊断；只有点击问题试听时才会临时输出所选片段 / 频段。插在总线 / 母带链最后一级即可。
+---
+
+## 三秒看懂：它到底能干嘛
+
+- 🎧 **响度 / 动态**：综合响度、瞬时、短时、LRA、PLR、4× 过采样真峰值，按 ITU-R BS.1770-4 / EBU R128 来。
+- 📉 **平台归一化后果**：Spotify、Apple Music、YouTube、Tidal、Amazon、SoundCloud、播客、俱乐部，分别告诉你“平台会给你加多少、砍多少、限多少、浪费多少响度”。
+- 🫧 **信号健康**：失真 / 互调、混叠、超低堆积、瞬态、单声道折叠、中频掩蔽，六层风险 + 联动归因；点卡片就从当前总线实时 solo。
+- 🧾 **专辑统一 / 交付门禁**：逐首采集，和专辑中位比 LUFS / LRA / PLR / TP / 频段，排风险、看 diff、导可复现的 JSON + TXT 证明。
+- 🎯 **曲风目标 / 平台交付**：36 组曲风参照 + “响度战争参与度”滑块，旁边直接列各平台交付要求，包括 Apple 曲尾静音检查。
+- 🖱️ **问题定位**：时间戳问题区域、时间线标记、CSV 导入 / 导出、A/B 快照、TXT / JSON / CSV 报告。
+- 🪟 **不挤爆小屏**：默认 1120×700，最小 880×560；MacBook Air 默认 DPI 也能好好坐下。
 
 ---
 
 ## English summary
 
-- **Loudness (ITU-R BS.1770-4 / EBU R128)**: integrated with absolute + relative gating, momentary, short-term, LRA (EBU Tech 3342), PLR, and 4× oversampled true peak.
-- **Platform normalisation**: eight destinations modelled as they behave — gain applied, predicted true peak before and after the service limiter, how much peak reduction the service has to perform, and how much of your limiting is thrown away. Compare every result with imported reference tracks (LUFS, LRA, PLR, low-side, sub share).
-- **Signal integrity**: harmonic / intermodulation energy over a local spectral floor, flat-top (hard-clip) density, aliasing risk with top-octave flatness, sub-bass build-up, transient preservation, true mono-fold loss and mid-masking risk — plus a correlation layer that merges simultaneous anomalies into one attribution.
-- **Mix diagnostics**: sample clipping, inter-sample overs, click/edit points, DC offset (4 s true mean), channel correlation, stereo width, mono-ness below 120 Hz, and a 10-band tonal balance that is **only compared with a reference track or album median** — never a built-in absolute curve — reported as concrete problems (mud, harshness, sibilance, missing air, sub excess, low-mid hole, bright/dark tilt, spectral holes) with bilingual explanations and fixes.
-- **Visuals**: 8192-point FFT with **60 fps** spectrum analysis on the spectrum page (other pages stay at a low-load rate) and fractional-octave smoothing (1/3 octave below 250 Hz), power-domain averaging, peak-preserving tone restoration and cubic curve drawing; 3-minute short-term loudness history; correlation / width / low-end meters.
-- **UI**: dark professional theme (light included), 100 / 125 / 150 / 175 / 200 % interface zoom that scales type, rows and the window together, bilingual Chinese/English (stored in plug-in state), keyboard shortcuts, A/B snapshot compare, exportable TXT / JSON / CSV report.
-- **Basis, not genre targets**: choose platform-normalisation consequence, reference tracks, album median or a manual reference. The platform view shows the attenuation, service limiting and wasted loudness; reference / album views show LUFS, LRA, PLR and spectral deltas. Fixed genre loudness is no longer a pass line.
-- **Album session / release gate**: capture tracks into a shared, versioned album snapshot; compare LUFS / LRA / PLR / TP / spectral deviation against the album median; rank platform, codec, signal, mono and inconsistency risks; toggle custom blocking rules; export a reproducible JSON + TXT proof with snapshot and evidence hashes and a previous-revision diff.
-- **Risk audition and marker exchange**: signal-health cards solo the selected band from the live bus in sync with the DAW; detected problem regions get timestamps and can be looped explicitly. Export / import marker CSV for DAW marker tables. Host automation exposes reset / capture / proof / marker commands.
-- **Verified**: `auval` passes, **46** offline DSP assertions pass (incl. −23.00 LUFS R128 calibration, mono-fold, sub-share, flat-top, defect-detector and audition bypass checks), ~0.31 % of one core at 48 kHz stereo. 1.5 UI benchmark: ~2.7 % loudness page, ~3.7 % spectrum page (60 fps), ~1.4 % album page.
-- **Install**: open the DMG, run `安装 Install.command`, restart the DAW, insert on the master bus.
+- **Loudness (ITU-R BS.1770-4 / EBU R128)**: gated integrated, momentary, short-term, LRA (EBU Tech 3342), PLR, and 4× oversampled true peak.
+- **Platform normalisation**: eight destinations modelled as they behave — gain applied, predicted true peak before / after the service limiter, service limiting, and wasted loudness. Reference-track comparison covers LUFS, LRA, PLR, low-side and sub share.
+- **Signal integrity**: harmonic / IMD excess above a local spectral floor, flat-top density, alias risk, sub build-up, transient score, true mono-fold loss and mid-masking risk, plus a correlation layer that merges simultaneous anomalies into one cause.
+- **Mix diagnostics**: sample clipping, inter-sample overs, clicks, DC offset, correlation, width, low-end mono check, and a 10-band tonal balance compared **only** with a reference track or album median — never a built-in absolute curve.
+- **Basis, not fixed genre pass/fail**: platform consequence, reference tracks, album median or manual reference. Genre targets live in their own module and are never silently applied.
+- **Album session / release gate**: shared versioned snapshot, per-track deltas, ranked risks, configurable blocking rules, reproducible JSON + TXT proof with hashes and previous-revision diff.
+- **Audition**: signal cards follow the live DAW bus; timestamped problem regions can be looped explicitly; inactive output stays bit-transparent.
+- **Visuals**: 8192-point FFT, 60 fps spectrum page, fractional-octave smoothing, 3-minute short-term history, correlation / width / low-end meters.
+- **UI**: dark theme (light included), bilingual Chinese / English, A/B snapshots, keyboard shortcuts, TXT / JSON / CSV export, compact 880×560 minimum layout.
+- **Verified**: `auval` passes; **50** offline DSP assertions pass; 1.5.1 offscreen load ≈1.3 % loudness / 3.0 % spectrum (60 fps) / 1.5 % signal / 1.4 % genre-target page of one core.
+- A roughly **10% playful soft tone**; the measurements are 100% serious.
 
-Build: `./scripts/make_dmg.sh` (universal binary, ad-hoc signed).
-
+Build: `./scripts/make_dmg.sh` (universal binary, ad-hoc signed).<br>
 Performance / architecture notes: `docs/performance-1.5.1.md`.
 
 ---
 
-## 1.5.1 更新
+## 1.5.1 更新：实时 Solo、时间戳问题区域、小屏友好、曲风目标回归
 
-- **实时 Solo 跟随 DAW（修复 1.5.0 的循环回放）**：信号健康六张卡片现在从当前总线输入直接做频段滤波，跟随宿主播放头实时输出；DAW 暂停 / 停止时立即静音，不再随机循环历史片段。Esc 或再次点击停止。
-- **问题区域时间戳循环（新增）**：当失真、混叠、超低堆积、瞬态、单声道折叠或中频掩蔽越过阈值时，自动生成带时间戳的问题区域（2 s 窗口）并写入时间线；点击问题区域即可循环该段、按对应频段试听。卡片点击 = 实时跟随，时间戳点击 = 定向循环，两种监听互不混淆。
-- **窗口适配 MacBook Air 默认 DPI**：最小布局从 900×620 降到 **880×560**，默认基准从 1180×760 降到 **1120×700**；首次启动按屏幕可用区域自动选择缩放，旧工程保存的过大的 150%/200% 会在小屏上自动降到可显示档位，并预留标题栏 / Dock 空间。
-- **曲风响度目标模块（恢复 + 独立页）**：新增「曲风目标 / 交付」页，恢复 36 组曲风 / 平台参照；滑块 0–100% 控制“响度战争参与度”：50% = 曲风标准，0% = 该曲风最安静的发行观测值，100% = 最响的发行观测值。目标 LUFS、建议 LRA、真峰值上限随滑块实时计算；「应用为目标」写入手动参考基准，不会偷偷改变平台模式。
-- **平台交付要求表（独立模块）**：同一页并列 Spotify / Apple Music / YouTube / Tidal / Amazon / SoundCloud / 播客 / 俱乐部要求，包含 LUFS、dBTP、编解码器、归一化行为、真峰值与尾部静音检查；Apple Digital Masters 的曲尾 ≥1 s 无波形 / 数字静音作为单独状态，测量到尾部静音时才会判定（避免播放中途误报）。
-- **尾部静音测量**：分析线程新增 trailing digital silence（-60 dBFS 阈值）计数，目标页 / 报告 / CSV 可读取；用于 Apple 曲尾交付检查。
+这一版主要是来“修上一版那个循环听感”的。1.5.0 的试听会反复播放历史片段，像在听一段卡住的录音；1.5.1 改成真正跟着 DAW 走，顺便把窗口、曲风参照和平台交付要求补齐。
+
+- **信号健康卡片改成实时跟随 DAW（修复 1.5.0 的循环回放）**：点击六张卡片时，直接对当前总线输入做 HP/LP 滤波，跟随播放头实时输出；DAW 暂停 / 停止时立即静音，不再随机回放历史片段。5 ms 淡入、RMS 响度匹配、峰值保护都在；Esc 或再次点击停止。
+- **时间戳问题区域循环（新增）**：失真、混叠、超低堆积、瞬态、单声道折叠、中频掩蔽任一越线时，自动生成带时间戳的 **2 s 问题区域**并写入时间线。点卡片 = 实时跟随；点时间戳 = 循环该段。两种监听不再混在一起。
+- **窗口适配 MacBook Air 默认 DPI**：最小布局 **880×560**（原 900×620），默认 **1120×700**（原 1180×760）；首次启动按屏幕可用区域自动选缩放，旧工程保存的过大 150% / 200% 会自动降到可显示档位，并预留标题栏 / Dock 的空间。
+- **曲风响度目标模块（独立页，快捷键 0）**：恢复 36 组曲风 / 平台参照；滑块 0–100% 控制“响度战争参与度”：**50% = 曲风标准**，0% = 该曲风最安静的发行观测值，100% = 最响的发行观测值。目标 LUFS、建议 LRA、真峰值上限实时计算；「应用为目标」写入手动参考，不会偷偷改平台模式。
+- **平台交付要求表**：Spotify / Apple Music / YouTube / Tidal / Amazon / SoundCloud / 播客 / 俱乐部并列，含 LUFS、dBTP、编解码器、归一化行为、真峰值与尾部静音状态。
+- **Apple 曲尾检查**：分析线程新增 trailing digital silence（−60 dBFS 阈值）计数；测到尾部静音才判定，没测到显示“尾部待测”，避免播放中途误报。Apple Digital Masters 参考要求：24-bit 源、TP ≤ −1 dBTP、无削波、曲尾 ≥1 s 无波形 / 数字静音（以发行商最终规范为准）。
 - **报告扩展**：TXT / JSON / CSV 增加曲风目标、参与度、建议 LRA、平台编解码器与尾部静音字段。
-- **验证**：**50** 项离线 DSP 断言通过（新增实时跟随、停止即静音、尾部静音测量）；`auval` 通过；版本号 **1.5.1**。
+- **验证**：**50** 项离线 DSP 断言通过（新增实时跟随、停止即静音、尾部静音测量）；`auval` 通过。
 
 ---
 
-## 1.5.0 更新
+## 1.5.0 更新：双基准、专辑门禁、60 fps 频谱
 
-- **判定基准重构（本版核心）**：固定曲风响度目标不再是合格线。顶部改为四种主基准：**平台归一化后果 / 参考轨 / 专辑中位 / 手动参考**。
-  - 平台模式直接显示归一化后的衰减、服务端限幅、被丢弃响度。−4 LUFS 这类超高响度会明确说明“归一化后感知响度不变，损失的是动态余量”。
-  - 参考轨 / 专辑中位模式显示 LUFS、LRA、PLR 与基线的差，只作差异提示，不自动判不合格。
-  - 频谱平衡只对照参考轨 / 专辑中位；没有参考时明确显示“无基准”，不再套用粉噪目标曲线。
-- **频谱 60 fps**：频谱页改为 60 Hz 分析与重绘（8192 FFT、分数倍频程平滑、峰值保持）；其他页面保持 30 Hz 更新，HOLD 时停止 FFT。离屏基准约 3.7% 单核。
-- **专辑统一化检查（新增专辑页）**：逐首「采集本曲」写入共享、带修订号的专辑快照；并列 LUFS / LRA / PLR / TP / Δ中位 / 状态；标记偏离专辑中位阈值（LUFS、LRA、PLR、TP、频段、相关性）的曲目和段落。
-- **专辑风险聚合与交付门禁**：按严重度排序平台归一化、编码 / TP、信号缺陷、单声道折叠、曲目间不一致；五个规则开关可自定义阻断项；输出阻断 / 放行结论。
-- **基准 / 规则持久化、共享、版本化**：专辑快照、中位、参考轨快照、检查规则保存在 `album.json`；可导入 / 导出 JSON 供团队共享；保存上一版快照并自动 diff，只高亮新增或恶化项。
-- **可复现交付证明**：专辑页「导出证明」输出 JSON + TXT，包含 schema / 版本 / 修订号、每首快照、中位、规则、门禁、风险排序、版本 diff、快照哈希与证据哈希（证据哈希不包含生成时间，可复算）。
-- **问题联动试听**：信号健康六张卡片与专辑风险行可点击；自动循环最近 / 风险时间片段、按频段滤波、做 RMS 响度匹配、5 ms 淡入淡出与峰值保护。默认旁路逐位不变，Esc 停止。
-- **DAW 标记交换与自动化（1.5 范围）**：时间线页可导出 / 导入标记 CSV（timecode / seconds / severity / text）。VST3 / AU 没有跨宿主标记写回 API，因此本版提供 CSV 交换而非声称直接写回每家 DAW；自动化参数提供 transport start 重置、stop 采集、stop 导出证明、命令选择（重置 / 采集 / 证明 / 标记 / 清空）。
-- **厂商名**：`COMPANY_NAME` / VST3 vendor / AU 名称 / Bundle ID 统一为 **BerryStudio**（AU 显示 `BerryStudio: MasterLens`，VST3 厂商为 BerryStudio）。AU manufacturer code 仍为 `OrcA` 以保持已有工程兼容。
-- **UI 修复**：版本号与 by BerryStudio 改为左侧品牌区动态布局，按可用宽度测量、必要时隐藏副标题，不再被右侧控件遮挡；标题副行明确“默认旁路，试听时改变输出”。
-- **验证**：46 项离线 DSP 断言通过（新增试听旁路 / 激活 / 停止恢复）；`auval` 通过；专辑证明 JSON 可生成并带哈希。版本号 **1.5.0**。
+- **判定基准重构**：固定曲风响度不再是合格线。顶部改为四种主基准：**平台归一化后果 / 参考轨 / 专辑中位 / 手动参考**。
+  - 平台模式直接显示归一化衰减、服务端限幅、被丢弃响度；−4 LUFS 这种超高响度会明确说“归一化后感知响度不变，损失的是动态余量”。
+  - 参考轨 / 专辑中位显示 LUFS、LRA、PLR 与基线差，只作差异提示，不自动判不合格。
+  - 频谱平衡只对照参考轨 / 专辑中位；没参考就老实显示“无基准”，不套粉噪绝对曲线。
+- **频谱 60 fps**：频谱页 60 Hz 分析与重绘（8192 FFT、分数倍频程平滑、峰值保持）；其他页面 30 Hz，HOLD 停止 FFT。
+- **专辑统一 / 交付门禁**：逐首采集、专辑中位、偏离标记、风险排序、五个阻断规则开关、上一版 diff。
+- **可复现交付证明**：JSON + TXT，schema / 版本 / 修订号、每首快照、中位、规则、门禁、风险、diff、SHA-256 快照哈希与证据哈希（证据哈希不含生成时间，可复算）。
+- **问题联动试听（1.5.0 初版）**：信号卡片与专辑风险行可点击；当时采用历史片段循环，1.5.1 已把信号卡片改为实时跟随。
+- **DAW 标记 / 自动化**：标记 CSV 导入 / 导出；自动化参数提供 transport start 重置、stop 采集、stop 导出证明、命令选择。
+- **厂商名**：`COMPANY_NAME` / VST3 vendor / AU 名称 / Bundle ID 统一为 **BerryStudio**；AU manufacturer code 仍为 `OrcA` 以兼容已有工程。
+- **验证**：46 项离线断言通过；`auval` 通过；专辑证明 JSON 可生成并带哈希。
+
 
 ---
 
-## 1.4.3 更新
+## 1.4.3 更新：把性能按在地上省电
 
-- **性能专项（本版唯一目标）**：保持测量与界面功能不变，只降低占用。同一台机器、同一离屏基准：
-  - 主界面（响度页）UI 线程：约 **6.5 % → 1.2 %** 单核（约 **5×** 降低）
-  - 频谱页：约 **1.7 %** 单核（20 fps 频谱）
-  - 信号健康页：约 **1.15 %** 单核
-  - DSP / 音频线程：约 **0.4 %** 单核（0.30–0.50 % 随负载波动）；频谱环形缓冲的每采样原子操作改为每块一次
-- **频谱显示路径重写**：
-  - 倍频程平滑窗口（1/3、1/6、1/12 oct）在 `prepare()` 中**预计算**，不再每帧 `pow()` / `floor()` 4097 次。
-  - 直接使用 FFT 的**线性功率**做前缀和，去掉 dB→power 的 4097 次 `pow(10, …)`。
-  - 用快速 `log10`（误差 < 0.001 dB）代替逐 bin 的 `log10f`。
-  - 峰值保持改为 3 点局部最大值，去掉每个 bin 的宽窗扫描；删除重复的 3 tap 与二次峰值恢复遍历。
-  - 不再每帧清零 2 × 8192 个 FFT 浮点（FFT 输出会覆盖整个缓冲）。
-- **页面感知分析**：频谱页以 **20 fps** 更新；响度 / 真峰值 / 立体声 / 平台 / 信号 / 诊断 / 时间线只以 **5 fps** 获取频段数据（灯与 Advisor 足够）。Hold 时完全跳过 FFT。
-- **UI 刷新分级**：Advisor / 模块灯 / 问题列表 5 Hz，信号缺陷 2 Hz，时间线标记复制 2 Hz，平台 / 信号 / 诊断页重绘 5 Hz；电平表、频谱与曲线保持高频。
-- **减少拷贝与分配**：`UiState` 改为 move；参考轨状态只在变化时重绘；频段偏差改为单遍扫描（原来 10 × 4097 次比较）。
-- **音频线程**：频谱环形缓冲改为按块写入，每块只做一次 acquire/release（原来每个采样两次原子操作）；单声道输入复用左声道滤波结果，不再重复跑完整滤波链。
-- **基准工具**：`MasterLensUiShot bench pageN` 会离屏运行 5 秒并输出 `UI_BENCH load=…%`，便于以后回归对比。测量方法与前后数据见 `docs/performance-1.4.3.md`。
-- 版本号 **1.4.3**。
+这一版不整花活，只干一件事：**让插件别把 CPU 当零食吃**。测量和界面功能保持不变，离屏基准下：
 
----
+- 主界面（响度页）UI 线程：约 **6.5% → 1.2%** 单核（约 5× 降低）。
+- 频谱页：约 **1.7%** 单核（当时 20 fps 频谱）。
+- 信号健康页：约 **1.15%** 单核。
+- DSP / 音频线程：约 **0.4%** 单核（0.30–0.50% 随负载波动）。
 
-## 1.4.2 更新
+具体做了这些“抠门”优化：
 
-- **界面缩放 / 字号（新增）**：右上角新增「设置」，提供 **100 / 125 / 150 / 175 / 200 %** 五档。缩放作用于整个界面表面——字号、行高、卡片、窗口一起等比放大，布局不重排，因此**不会因为放大字号而截断文字**。⌘ + / ⌘ − 可快速调整，档位随工程保存；首次打开会按屏幕可用面积自动选择能容纳的最大档位（大屏直接 200 %，笔记本取能完整显示的一档）。
-- **全新 BerryStudio 品牌标识（新增）**：矢量绘制的「镜头光圈 × 三颗浆果」标识，用于标题栏、关于、设置、报告、DMG / NSIS 安装包、插件图标（`ICON_BIG`）与 README；`docs/logo.svg` 与 `packaging/icon.png` 由同一份几何生成。产品名旁、状态栏、About、Settings、TXT / JSON / CSV 报告、DMG 使用说明与安装脚本均标注 **BerryStudio**；插件元数据 `COMPANY_NAME` 改为 BerryStudio。
-- **频谱低频平滑（新增）**：频谱改为**功率域分数倍频程平均**——250 Hz 以下 1/3 倍频程、4 kHz 以下 1/6、更高 1/12；再做一次 3 tap 平滑，并用三次 Hermite 插值 + 三次贝塞尔曲线绘制。低频不再出现 FFT 频点台阶，同时保留真实音调峰值（0 dBFS 正弦仍读 0 dB，不会因平均被压低）。
-- **平台归一化后果模拟（取代静态交付裁判）**：平台页从「是否合格」改为「归一化后会发生什么」——8 个平台（Spotify / Apple Music / YouTube / Tidal / Amazon Music / SoundCloud / 播客 / 俱乐部）分别给出服务增益、限幅前真峰值、服务端必须做的限幅量、被丢弃的响度与最终状态。俱乐部条目不参与归一化，只检查真峰值。
-- **与参考作品量化对比（新增）**：导入 1–4 条参考轨后，右侧按 综合响度 / LRA / PLR / 真峰值 / 低频侧向 / 超低占比 六项显示「你的 / 参考 / 差值」，并给出结论（例如「你比参考响 3 LU、动态少 2 LU；归一化后两者同为平台目标，多的响度不会到达听众」）。参考轨的响度统计与频谱在同一后台线程计算。
-- **信号健康页（新增，第 6 个模块）**：六层客观检测 + 联动归因
-  - 谐波 / 互调失真：2–5 次谐波相对局部谱底的超出量、互调边带、平顶样本比例
-  - 混叠 / 高频完整性：16–20 kHz 相对 10–16 kHz 的斜率 + 顶级频谱平坦度（避免把「明亮」误判成混叠）
-  - 超低频堆积：40 Hz 以下能量占比、20–40 与 40–80 的密度差
-  - 瞬态完整性：PLR / PSR / 峰响损失与平顶共同评分
-  - 单声道折叠：真实 M=(L+R)/2 前后的电平损失、整体与低频保留率
-  - 中频掩蔽：200–800 Hz 相对 1–4 kHz 的密度差
-  - **联动归因层**：当「真峰值贴顶 + 平顶/谐波 + 瞬态下降」「超低堆积 + 单声道损失」「低中过多 + 瞬态被压」「混叠 + 失真」同时出现时，合并为一条根因结论；时间线页还会把 ±0.8 秒内的多个自动 / 手动标记合并成「联动事件」，而不是让用户自己拼图。
-- **诊断与报告**：Advisor 增加 7 条信号完整性规则与 1 条联动规则；检查清单只追加真正越线的信号项；TXT / JSON / CSV 增加信号完整性、平台限幅量与被丢弃响度、参考作品差值。
-- **其它修复**：设置 / 关于 / 曲风面板互斥打开；Esc 优先关闭最上层面板；底部状态栏与页头在所有缩放下不再使用物理像素宽度；频谱峰值读数改用平滑后的曲线并保留音调峰值。
-- 版本号 **1.4.2**。
+- 倍频程平滑窗口（1/3、1/6、1/12 oct）在 `prepare()` 预计算，不再每帧跑 4097 次 `pow()` / `floor()`。
+- 直接用 FFT 线性功率做前缀和，去掉 4097 次 dB→power 的 `pow(10, …)`。
+- 用误差 <0.001 dB 的快速 `log10` 代替逐 bin `log10f`。
+- 峰值保持改为 3 点局部最大值，删掉宽窗扫描和重复遍历。
+- 不再每帧清零 2×8192 个 FFT 浮点；FFT 输出会覆盖整个缓冲。
+- 页面感知分析：频谱页 20 fps，其他页 5 fps 取频段数据；HOLD 完全跳过 FFT。
+- UI 分层刷新：Advisor / 模块灯 / 问题列表 5 Hz，信号缺陷 2 Hz，时间线标记复制 2 Hz。
+- `UiState` 改为 move；参考轨只在变化时重绘；频段偏差单遍扫描。
+- 频谱环形缓冲改按块写入，每块一次 acquire/release；单声道输入复用左声道滤波结果。
+- 新增 `MasterLensUiShot bench pageN` 离屏 5 秒基准，输出 `UI_BENCH load=…%`，方便以后回归。
+
+详见 `docs/performance-1.4.3.md`。
 
 ---
 
-## 1.4.1 更新
+## 1.4.2 更新：缩放、品牌、频谱平滑、信号健康
 
-- **每个曲风的「?」科普面板（新增）**：下拉菜单左侧出现 `?` 按钮，点开显示当前曲风的**响度战争实况**——该风格已发行作品的实际响度区间（如摇滚 −11 ~ −8 LUFS、古典 −24 ~ −18 LUFS）、为什么会被压到那个程度，以及该曲风在归一化时代还有没有收益。平台条目显示规范本身（-14/-16/-23 LUFS 与 dBTP 上限）。
-- **响度战争目标滑块（新增）**：面板内三个滑块可直接调
-  - `目标响度 LUFS`（−30 ~ −5，同步到顶部参数条与所有指标卡）
-  - `LRA 目标 LU`（1 ~ 20，默认 8）：你希望保留的动态范围
-  - `允许削波 dB`（0 ~ 3）：能接受用削波换响度的幅度；≥1.5 dB 时面板会提示「瞬态上会听出来」
-  三项设置随工程保存（`lraTarget` / `clipAllowance`）。
-- **具体插件调整建议（新增）**：面板下方按所选目标**实时生成**可执行建议——建议链路（总线 EQ → 慢压缩 → 饱和 → 削波 → 限幅器）、压缩比例与 attack、限幅器 ceiling / 目标增益衰减 / release、低于或高于目标时的 0.5 dB 步进流程、LRA 不足时该降比例还是让削波吃峰值。
-  例：目标 −9.5 LUFS 时给出「比例 2:1，约 4 dB GR，release 120 ms，ceiling −1.0 dBTP」；目标 −16 LUFS 时改为「比例 1.5:1，1 dB GR，release 400 ms」。
-- **修复**：等宽字体缺少中文字形导致的中文乱码（建议文字、`±` 等符号）；多行文本行距重叠。
-- 版本号 **1.4.1**。
+- **界面缩放 / 字号**：设置里提供 **100 / 125 / 150 / 175 / 200%** 五档。字号、行高、卡片、窗口一起等比放大，布局不重排，所以不会因为放大而截字；⌘ + / ⌘ − 可快速调整，档位随工程保存。
+- **BerryStudio 品牌标识**：矢量「镜头光圈 × 三颗浆果」，用于标题栏、关于、设置、报告、DMG / NSIS、插件图标与 README；`docs/logo.svg` 与 `packaging/icon.png` 由同一份几何生成。
+- **频谱低频平滑**：功率域分数倍频程平均（≤250 Hz 1/3 oct、≤4 kHz 1/6、更高 1/12），再做 3 tap 平滑，三次 Hermite 插值 + 三次贝塞尔绘制。低频不再有 FFT 台阶，同时保留真实音调峰值。
+- **平台归一化后果模拟**：平台页从“是否合格”改为“归一化后会发生什么”——8 个平台分别给出服务增益、限幅前真峰值、服务端限幅量、被丢弃响度与最终状态；俱乐部不归一化，只查峰值。
+- **参考作品量化对比**：导入 1–4 条参考轨，按综合响度 / LRA / PLR / 真峰值 / 低频侧向 / 超低占比六项显示「你的 / 参考 / 差值」，并给出“响度换来了什么、丢失了什么”的结论。
+- **信号健康页（第 6 个模块）**：谐波 / 互调、混叠 / 高频完整性、超低堆积、瞬态完整性、单声道折叠、中频掩蔽，加联动归因层。
+- **诊断与报告**：Advisor 增加 7 条信号完整性规则与 1 条联动规则；TXT / JSON / CSV 增加信号完整性、平台限幅量、被丢弃响度、参考差值。
+- **其它修复**：设置 / 关于 / 曲风面板互斥；Esc 优先关闭最上层面板；状态栏与页头不再用物理像素宽度；频谱峰值读数改用平滑曲线并保留音调峰值。
 
 ---
 
-## 1.4 更新
+## 1.4.1 更新：曲风科普与响度战争滑块
 
-- **曲风参考目标（新增）**：预设菜单从 8 项平台预设扩展为 **36 个可选目标 + 自定义**，分「平台 / 规范」「曲风参考」「手动设定」三组：
-  - 平台 / 规范（8）：流媒体通用、Spotify、Apple Music、YouTube、Tidal、播客、有声书、EBU R128 −23 LUFS
-  - 曲风参考（28）：俱乐部 / 舞曲 −8、EDM / 电子 −8、浩室 / 科技舞曲 −8.5、鼓打贝斯 −7.5、Dubstep −7.5、合成器流行 −9、Lo-fi −14、环境 −18、流行 −9.5、嘻哈 / Trap −9、R&B / Soul −11、K-Pop −9、拉丁 −10、雷鬼 −12、摇滚 −10、现代摇滚 −9、金属 −9、朋克 −9.5、独立 / 另类 −11、布鲁斯 −14、乡村 −12、民谣 −14、爵士 −16、原声 / 器乐 −16、古典 −20、影视配乐 −20、游戏音频 −16、短视频 −14
-- **每条目标自带三组参考值**：目标 LUFS、真峰值上限 dBTP、建议 LRA 动态区间；选中即同时写入目标响度与真峰值上限两个参数，悬停提示显示完整参考值（如 `Jazz −16 LUFS | TP −1.0 dBTP | LRA 10-16 LU`）。
-- 参考表是写死的静态数据（`Source/Presets.h`），运行时不联网、不学习；新增曲风只需加一行。
-- **修复**：分隔符 `·`、`±` 在部分字体下渲染为 `Â·` / `Â±` 的乱码（改为 ASCII 输出）；预设选择改由 ComboBox ID 驱动，插入分组标题后不会错位。
-- **打包链修复**：`make_dmg.sh` 现在构建全部目标（此前只重编共享库，可能把旧插件打进 DMG），版本号改为从 `Source/Version.h` 自动读取。
-- 版本号 **1.4.0**。
+- **每个曲风的「?」科普面板**：下拉菜单左侧出现 `?`，点开显示当前曲风已发行作品的实际响度区间（如摇滚 −11 ~ −8 LUFS、古典 −24 ~ −18 LUFS）、为什么会被压到那个程度，以及归一化时代还有没有收益。平台条目显示规范本身。
+- **响度战争目标滑块**：目标响度 −30 ~ −5 LUFS；LRA 1 ~ 20 LU；允许削波 0 ~ 3 dB。三项随工程保存（`lraTarget` / `clipAllowance`）；削波 ≥1.5 dB 时提示“瞬态上会听出来”。
+- **具体插件调整建议**：按所选目标实时生成链路建议（总线 EQ → 慢压缩 → 饱和 → 削波 → 限幅器）、压缩比例 / attack、限幅器 ceiling / 目标增益衰减 / release，以及 0.5 dB 步进流程。
+- 例：目标 −9.5 LUFS → 比例 2:1、约 4 dB GR、release 120 ms、ceiling −1.0 dBTP；目标 −16 LUFS → 比例 1.5:1、1 dB GR、release 400 ms。
+- **修复**：等宽字体缺中文字形导致乱码；多行文本行距重叠。
 
 ---
 
-## 1.3 更新
+## 1.4.0 更新：36 组曲风 / 平台目标
 
-- **深色专业界面（含浅色主题）**：整套 UI 换成令牌化设计系统——三层背景、1 px 描边、10 px 卡片 / 6 px 控件圆角、六档字号（32 / 26 / 13 / 12 / 11 / 10），并在头部提供深 / 浅主题切换（偏好随工程保存）。
-- **排版规则统一**：所有读数走等宽字体（自然 tabular），统一 1 位小数；负号统一 U+2212；区间用 en dash；数值、单位与轴标签分层配色，正文对比度 ≥ 4.5:1。
-- **栅格重构**：Header 56 / 参数条 72（12 列栅格，左右两组垂直中心对齐）/ 左导航 200 / 底部状态栏 40 / 时间线 44；窗口 900×620 – 1900×1400，默认 1180×760。
+- **曲风参考目标**：预设从 8 项平台预设扩展到 **36 个可选目标 + 自定义**，分「平台 / 规范」「曲风参考」「手动设定」。
+  - 平台 / 规范（8）：流媒体通用、Spotify、Apple Music、YouTube、Tidal、播客、有声书、EBU R128 −23 LUFS。
+  - 曲风参考（28）：俱乐部 / 舞曲 −8、EDM −8、浩室 / 科技舞曲 −8.5、DnB −7.5、Dubstep −7.5、合成器流行 −9、Lo-fi −14、环境 −18、流行 −9.5、嘻哈 / Trap −9、R&B / Soul −11、K-Pop −9、拉丁 −10、雷鬼 −12、摇滚 −10、现代摇滚 −9、金属 −9、朋克 −9.5、独立 / 另类 −11、布鲁斯 −14、乡村 −12、民谣 −14、爵士 −16、原声 / 器乐 −16、古典 −20、影视配乐 −20、游戏音频 −16、短视频 −14。
+- 每条目标自带目标 LUFS、真峰值上限、建议 LRA 区间；选中即写入目标响度与 TP 上限，悬停显示完整参考值。
+- 参考表写死在 `Source/Presets.h`，运行时不联网、不学习；加曲风只需加一行。
+- **修复**：`·` / `±` 在部分字体下显示为 `Â·` / `Â±` 的乱码（改为 ASCII 输出）；预设改由 ComboBox ID 驱动，插入分组标题后不会错位。
+- **打包链修复**：`make_dmg.sh` 构建全部目标，版本号从 `Source/Version.h` 自动读取。
+
+---
+
+## 1.3.0 更新：深色专业界面成型
+
+- **深色主题 + 浅色主题**：令牌化设计系统——三层背景、1 px 描边、10 px 卡片 / 6 px 控件圆角、六档字号（32 / 26 / 13 / 12 / 11 / 10）；头部可切深浅，偏好随工程保存。
+- **排版统一**：读数走等宽字体（自然 tabular），统一 1 位小数；负号统一 U+2212；区间用 en dash；数值、单位与轴标签分层配色，正文对比度 ≥4.5:1。
+- **栅格重构**：Header 56 / 参数条 72（12 列栅格）/ 左导航 200 / 底部状态栏 40 / 时间线 44；当时窗口 900×620 – 1900×1400，默认 1180×760。
 - **指标卡**：固定 104 px 三行网格，含「与目标差值 / 余量」胶囊、真峰值 4× 与 OVERS 计数、空态「等待信号」。
-- **M / S 电平**：横向 meter，6 px 轨道、−36 / −24 / −12 / −6 / 0 刻度与 −14 目标线，数值右对齐等宽。
-- **历史曲线**：单一相对时间轴（1 s / 10 s / 60 s / 整曲切换）、目标虚线 + LRA 8 % 容许带、hover 十字线与时间 / 数值提示；删除与图内重复的第二条时间轴。
-- **平台交付**：逐平台表格（目标 / 上限 / 需增益 / 预测 TP / 状态），超限行 6 % 红底 + 2 px 红条。
-- **诊断闭环**：新增 9 项固定阈值检查清单，Advisor 增加「归一化后真峰值」规则；问题列表与清单可逐条核对。
-- **交互**：保持 (Hold) / 清零统计（含 tooltip）、A / B 快照对比、+ 打标记（按钮与双击时间条）、快捷键 Space / R / 1–7 / Esc / ⌘E、TXT + JSON + CSV 导出（含时间戳）、全部控件带 tooltip 与焦点环。
-- 版本号 **1.3.0**。
+- **M/S 电平**：6 px 轨道、−36 / −24 / −12 / −6 / 0 刻度与 −14 目标线，数值右对齐等宽。
+- **历史曲线**：1 s / 10 s / 60 s / 整曲切换、目标虚线 + LRA 8% 容许带、hover 十字线与时间 / 数值提示。
+- **平台交付**：逐平台表格（目标 / 上限 / 需增益 / 预测 TP / 状态），超限行 6% 红底 + 2 px 红条。
+- **诊断闭环**：9 项固定阈值检查清单，Advisor 增加「归一化后真峰值」规则。
+- **交互**：Hold / 清零 / A/B 快照 / 标记、Space / R / 1–7 / Esc / ⌘E、TXT + JSON + CSV 导出、全部控件 tooltip 与焦点环。
 
-> Windows 安装包：本机为 macOS，交叉编译 Windows 需要 MSVC / MinGW 工具链。仓库已附带
-> `.github/workflows/build.yml`（Windows x64 + ARM64 两个矩阵任务，用 MSVC 构建并调用 NSIS
-> `packaging/installer.nsi` 生成安装包）以及 `packaging/installer.nsi`。推送 `v*` 标签即可在
-> GitHub Actions 上产出 `MasterLens-1.4.1-Windows-x64.exe` 与 `-arm64.exe`。
+> 小声说：当时的窗口还是 1180×760，后来 1.5.1 才学会在 MacBook Air 上收腹坐下。
 
 ---
 
-## 1.2 更新
+## 1.2.0 更新：功能菜单化与频谱修复
 
-- **界面按功能菜单化**：左侧模块导航（响度 / 真峰值 / 频谱 / 立体声 / 平台交付 / 混音诊断 / 时间线），每项带状态灯与 1–2 个关键读数；右侧为主数据区，只显示当前模块的详情，底部是统一时间线标记条。
-- **字号与 DPI**：全局字号再上调，所有文字随窗口尺寸缩放；布局改为按比例 + 最小尺寸计算，任意横纵比缩放都不再错位。
-- **频谱“方波”修复**：FFT 由 4096 提升到 8192，绘制改为按 bin 对数插值（不再取最大值阶梯），低频曲线平滑。
-- **新增检查**：PSR（含最低点时间戳）、真峰值超限事件列表（时间 + 超出量）、三段分频相关性 / 侧向能量、四段能量占比、谐振检测（局部中值 +6 dB）、平台交付预测（Spotify / Apple / YouTube / Tidal / Podcast / Club，静态查表）、参考轨导入（1–4 条，Welch 平均）、TXT + JSON 报告导出。
-- 版本号 **1.2.0**。
-
-> Windows 安装包：本机为 macOS，交叉编译 Windows 需要 MSVC / MinGW 工具链。仓库已附带
-> `.github/workflows/build.yml`（Windows x64 + ARM64 两个矩阵任务，用 MSVC 构建并调用 NSIS
-> `packaging/installer.nsi` 生成安装包）以及 `packaging/installer.nsi`。推送 `v*` 标签即可在
-> GitHub Actions 上产出 `MasterLens-1.2.0-Windows-x64.exe` 与 `-arm64.exe`。
+- **左侧模块导航**：响度 / 真峰值 / 频谱 / 立体声 / 平台交付 / 混音诊断 / 时间线，每项带状态灯与 1–2 个关键读数；右侧只显示当前模块，底部统一时间线。
+- **字号 / DPI**：全局字号上调，文字随窗口缩放；布局按比例 + 最小尺寸计算，任意纵横比不再错位。
+- **频谱“方波”修复**：FFT 4096 → 8192，绘制改为按 bin 对数插值（不再取最大值阶梯），低频曲线平滑。
+- **新增检查**：PSR（含最低点时间戳）、真峰值超限事件列表、三段分频相关性 / 侧向能量、四段能量占比、谐振检测（局部中值 +6 dB）、平台交付预测、参考轨导入（1–4 条，Welch 平均）、TXT + JSON 报告。
 
 ---
 
-## 1.1 更新
+## 1.1.0 更新：界面更清爽、诊断可展开
 
-- **界面更清爽、字号更大**：全局字号 +12%，头部改为两行——第一行是预设 / 关于 / 中英切换，第二行是目标响度 / 真峰值上限 / 重置 / 冻结 / 导出；窗口最小宽度 1120，卡片留白更均匀。
-- **诊断改为可展开列表**：默认每个问题一行（标题 + 严重度 + 时间），点行首箭头或整行即可展开处理建议（手风琴），再次点击收起；实时结论仍随音频即时更新。
-- **性能大幅优化**：定位到 `monoFont()` 每帧调用 `Font::findAllTypefaceNames()`（触发 CoreText 字体枚举 + XPC）是卡顿主因。修复后同一窗口 CPU 从 **54% 降至 ~11%**；同时把网格/坐标轴缓存为离屏位图、动态视图设为 opaque、频谱 30 fps / 历史 10 fps 分层刷新。
-- **关于面板**：新增「关于 / About」，显示版本、开发者 **KNGTNPT**、机构 **BerryStudio**、测量标准与构建信息；版本号同步出现在标题栏与导出报告尾部。
-- 版本号 **1.1.0**。
+- **界面**：全局字号 +12%；头部两行——第一行预设 / 关于 / 中英切换，第二行目标响度 / TP 上限 / 重置 / 冻结 / 导出；最小宽度 1120，卡片留白更均匀。
+- **诊断可展开列表**：默认一行（标题 + 严重度 + 时间），点箭头或整行展开建议，再次点击收起；实时结论仍随音频更新。
+- **性能大修**：定位到 `monoFont()` 每帧调用 `Font::findAllTypefaceNames()`（CoreText 字体枚举 + XPC）是卡顿主因；修复后同窗口 CPU **54% → ~11%**。同时缓存网格 / 坐标轴为离屏位图、动态视图 opaque、频谱 30 fps / 历史 10 fps 分层刷新。
+- **关于面板**：显示版本、开发者 KNGTNPT、机构 BerryStudio、测量标准与构建信息；版本号同步出现在标题栏与报告尾部。
+
+---
+
+## 1.0.0 更新：初见版
+
+这是 MasterLens 最早能拿出来见人的版本，轮廓大概是这样：
+
+- 基础响度 / 真峰值 / 平台预设测量；
+- 总线分析、TXT / JSON 报告；
+- 深色界面与最初的模块化布局；
+- 先解决“能看见问题”，再慢慢长出后面的频谱、信号健康、专辑门禁和曲风目标。
+
+更细的 1.0.0 行为以 tag `v1.0.0` 的源码为准；这里保留一个不打肿脸的版本脉络，方便回头看它是怎么一步步长成现在这样的。
+
 
 
 ---
 
-## 1. 功能
+## 功能细节（认真模式，药娘浓度降到 3%）
 
 ### 母带响度
+
 | 指标 | 说明 |
 | --- | --- |
-| 综合响度 I | ITU-R BS.1770-4 K 加权 + 门限积分（400 ms 块、75 % 重叠、−70 LUFS 绝对门限、−10 LU 相对门限） |
+| 综合响度 I | ITU-R BS.1770-4 K 加权 + 门限积分（400 ms 块、75% 重叠、−70 LUFS 绝对门限、−10 LU 相对门限） |
 | 瞬时 / 短时 M / S | 400 ms / 3 s 窗口，100 ms 更新 |
 | 响度范围 LRA | EBU Tech 3342：3 s 短时、1 s 步进、−70 / −20 门限、10 / 95 百分位 |
 | 峰响比 PLR | 真峰值 − 综合响度 |
 | 真峰值 TP | 4× 过采样多相插值（96 tap、Blackman-Harris 窗），捕捉跨采样峰值 |
 | 目标对齐 | 预设：流媒体 −14 / Apple Music −16 / YouTube −14 / 播客 −16 / 广播 EBU R128 −23 / 俱乐部 −8 LUFS |
 
-### 平台归一化后果
-- 8 个目标：Spotify、Apple Music、YouTube、Tidal、Amazon Music、SoundCloud、播客、俱乐部。
-- 每个平台输出：服务增益、限幅前预测真峰值、最终预测真峰值、服务端必须做的限幅量、
-  被归一化丢弃的响度、状态。俱乐部不归一化，只检查峰值。
-- 导入参考轨后按 综合响度 / LRA / PLR / 真峰值 / 低频侧向 / 超低占比 六项与参考对比，
-  并给出「响度换来了什么、丢失了什么」的结论，而不是只判合格 / 不合格。
+### 双基准 / 平台归一化后果
 
-### 混音质量诊断（参考常见混音质检标准）
-- **失真**：采样级削波计数、跨采样过载区间计数、瞬态跳变（爆音 / 剪辑点）计数
-- **声场**：声道相关性、立体声宽度（侧 / 中能量比）、120 Hz 以下侧向能量（低频单声道检查）
-- **电平**：直流偏移（4 秒真均值）、动态过量压缩（LRA / PLR）
-- **频段平衡**：10 段（超低 20–60 Hz … 极高频 16–20 kHz）相对参考的偏差，用于指出
-  **浑浊（250–500 Hz 堆积）、刺耳（2–5 kHz 过硬）、齿音过重（5–9 kHz）、
-  空气感不足（9–16 kHz）、超低频过重、低中频塌陷、整体偏亮 / 偏暗、频段空缺**
-- 每条结论都带中文说明、数值与处理建议；事件类问题记录首次检出的时间戳
-- 通过项同样列出（未检出削波、单声道兼容性良好、动态范围健康、频段平衡正常）
+- 主基准四种：**平台归一化后果 / 参考轨 / 专辑中位 / 手动参考**。
+- 平台模式输出：服务增益、限幅前预测真峰值、最终预测真峰值、服务端必须做的限幅量、被归一化丢弃的响度、状态。俱乐部不归一化，只检查峰值。
+- 参考轨 / 专辑中位模式输出：综合响度 / LRA / PLR / 真峰值 / 低频侧向 / 超低占比六项「你的 / 参考 / 差值」，并给出“响度换来了什么、丢失了什么”的结论。
+- **固定曲风响度不是全局合格线**；曲风目标只存在独立模块里，不会偷偷套用。
 
-### 信号健康（v1.4.2）
-- **谐波 / 互调**：对 50 Hz–2 kHz 的强音，测量 2–5 次谐波相对局部谱底的超出量；
-  互调取低频峰与中频峰的 `f2±f1` 边带。平顶样本比例直接来自波形（硬削波签名）。
-- **混叠**：16–20 kHz 相对 10–16 kHz 的密度斜率 + 顶级频谱平坦度；只有「更亮且更噪」
-  才判为混叠，避免把空气感当成失真。
-- **超低频堆积**：40 Hz 以下真实能量占比（LR4 支路），加上 20–40 Hz 与 40–80 Hz 的密度差。
+### 混音质量诊断
+
+- **失真**：采样级削波计数、跨采样过载区间计数、瞬态跳变（爆音 / 剪辑点）计数。
+- **声场**：声道相关性、立体声宽度（侧 / 中能量比）、120 Hz 以下侧向能量（低频单声道检查）。
+- **电平**：直流偏移（4 秒真均值）、动态过量压缩（LRA / PLR）。
+- **频段平衡**：10 段（超低 20–60 Hz … 极高频 16–20 kHz）相对参考的偏差，指出 **浑浊（250–500 Hz 堆积）、刺耳（2–5 kHz 过硬）、齿音过重（5–9 kHz）、空气感不足（9–16 kHz）、超低频过重、低中频塌陷、整体偏亮 / 偏暗、频段空缺**。
+- 每条结论带中文说明、数值与处理建议；事件类问题记录首次检出时间戳；通过项也会列出。
+
+### 信号健康
+
+- **谐波 / 互调**：50 Hz–2 kHz 强音的 2–5 次谐波相对局部谱底超出量；互调取低频峰与中频峰的 `f2±f1` 边带；平顶样本比例直接来自波形。
+- **混叠**：16–20 kHz 相对 10–16 kHz 的密度斜率 + 顶级频谱平坦度；只有“更亮且更噪”才判混叠，避免把空气感当失真。
+- **超低堆积**：40 Hz 以下真实能量占比（LR4 支路）+ 20–40 Hz 与 40–80 Hz 密度差。
 - **瞬态完整性**：PLR / PSR / 峰响损失 / 平顶共同评分（0–100）。
-- **单声道折叠损失**：直接计算 M=(L+R)/2 前后的能量，输出损失 dB、整体与低频保留率。
-- **中频掩蔽**：200–800 Hz 相对 1–4 kHz 的密度差，提示人声 / 军鼓被低中能量掩蔽。
-- **联动归因层**：同一根因下同时越线的层会合并成一条结论（限幅链、低频侧向、掩蔽叠加、混叠+失真）。
+- **单声道折叠**：直接计算 M=(L+R)/2 前后能量，输出损失 dB、整体与低频保留率。
+- **中频掩蔽**：200–800 Hz 相对 1–4 kHz 的密度差，提示人声 / 军鼓被低中能量盖住。
+- **联动归因层**：同一根因下同时越线的层合并成结论（限幅链、低频侧向、掩蔽叠加、混叠 + 失真）。
+
+### 实时 Solo / 问题区域（1.5.1 重点）
+
+- **卡片点击 = 实时跟随**：六张信号卡直接对当前输入做 HP/LP，跟随 DAW 播放头；停止 / 暂停时清零滤波器并静音，不读历史循环。
+- **时间戳点击 = 定向循环**：层越线时记录 2 s 问题区域（开始 / 结束时间），点击后循环该段，按对应频段滤波并做 RMS 响度匹配。
+- **5 ms 淡入淡出 + 峰值保护**；默认旁路时输出逐位不变；Esc 停止。
+- 问题区域同时写入时间线，导出报告 / CSV 时也能看到时间戳。
+
+### 曲风目标 / 平台交付要求（1.5.1 新增）
+
+- 36 组静态参照：平台 / 规范 8 组 + 曲风 28 组 + 自定义。
+- **响度战争参与度**：
+  - 0% = 该曲风最安静的发行观测值；
+  - 50% = 曲风标准；
+  - 100% = 该曲风最响的发行观测值。
+- 目标 LUFS、建议 LRA、TP 上限随滑块实时插值；点「应用为目标」写入手动参考与 LRA 目标，不偷偷改主基准。
+- 平台表包含 LUFS / dBTP / 编解码器 / 归一化行为 / TP / 尾部静音状态。Apple Digital Masters 曲尾要求按 **≥1 s 无波形 / 数字静音** 检查（以发行商最终规范为准）。
+- 尾部静音测量阈值 −60 dBFS；没测到尾部时显示“待测”，不冤枉正在播放的歌。
+
+### 专辑统一 / 交付门禁
+
+- 逐首「采集本曲」写入共享、带修订号的专辑快照；并列 LUFS / LRA / PLR / TP / Δ中位 / 状态。
+- 标记偏离专辑中位阈值（LUFS、LRA、PLR、TP、频段、相关性）的曲目与段落。
+- 按严重度排序平台归一化、编码 / TP、信号缺陷、单声道折叠、曲目间不一致；五个规则开关控制阻断。
+- 保存上一版快照并自动 diff，只高亮新增或恶化项。
+- 「导出证明」输出 JSON + TXT：schema / 版本 / 修订号、每首快照、中位、规则、门禁、风险、diff、SHA-256 快照哈希与证据哈希（证据哈希不含生成时间，可复算）。
 
 ### 可视化
-- 实时频谱：8192 点 FFT、**频谱页 60 fps（其他页低负载刷新）**、对数频率轴、功率域分数倍频程平滑
-  （≤250 Hz 1/3 oct、≤4 kHz 1/6 oct、更高 1/12 oct）、峰值保持、三次曲线绘制
-- 短时响度历史：最近 3 分钟，带基准区间与基准线
-- M / S 电平条、相关性 / 宽度 / 低频单声道仪表、失真事件计数
-- 一键导出 TXT / JSON / CSV 分析报告（含全部测量值、信号完整性、归一化后果与诊断结论）
+
+- 实时频谱：8192 点 FFT、频谱页 **60 fps**（其他页低负载刷新）、对数频率轴、功率域分数倍频程平滑（≤250 Hz 1/3 oct、≤4 kHz 1/6、更高 1/12）、峰值保持、三次曲线绘制。
+- 短时响度历史：最近 3 分钟，带基准区间与基准线。
+- M/S 电平条、相关性 / 宽度 / 低频单声道仪表、失真事件计数。
+- 一键导出 TXT / JSON / CSV（全部测量值、信号完整性、归一化后果、曲风目标、专辑门禁与诊断结论）。
 
 ### 界面
-深色专业主题（可切浅色），可自由缩放；提供 **100–200 % 界面缩放**，字号、行高、
-卡片与窗口一起等比放大且不截断文字。基准布局 900×620 – 1900×1400，默认 1180×760。
 
-**中英双语**：右上角 `EN / 中文` 按钮一键切换，全部界面文案、诊断结论与导出报告同步切换；
-语言选择保存在插件状态里，下次打开保持上次的选择。
+- 深色专业主题（可切浅色）；界面缩放 100–200%，字号、行高、卡片与窗口一起等比放大且不截字。
+- 1.5.1 基准布局：**880×560 – 1900×1400**，默认 **1120×700**；小屏会自动降低过大的旧缩放。
+- **中英双语**：右上角 `EN / 中文` 一键切换；界面、诊断、报告同步；语言保存在插件状态。
+- 10 个模块：响度、真峰值、频谱、立体声、平台归一化、专辑、信号健康、诊断、时间线、曲风目标；快捷键 1–9 + 0。
 
 | 中文 | English |
 | --- | --- |
@@ -253,17 +281,18 @@ Performance / architecture notes: `docs/performance-1.5.1.md`.
 | --- | --- |
 | ![signal](docs/screenshot-signal.png) | ![normalisation](docs/screenshot-normalisation.png) |
 
-| 界面缩放设置 / Interface scale |
-| --- |
-| ![settings](docs/screenshot-settings.png) |
+| 界面缩放设置 / Interface scale | 曲风目标 / Genre target |
+| --- | --- |
+| ![settings](docs/screenshot-settings.png) | ![target](docs/target-1.5.1.png) |
 
 | 联动事件（同一时间点合并归因） / Linked events |
 | --- |
 | ![timeline](docs/screenshot-timeline.png) |
 
+
 ---
 
-## 2. 判定阈值
+## 判定阈值（硬规则，不撒娇）
 
 | 检查项 | 触发条件 | 严重度 |
 | --- | --- | --- |
@@ -276,9 +305,9 @@ Performance / architecture notes: `docs/performance-1.5.1.md`.
 | 瞬态被压扁 | PLR < 8 dB | 建议检查 |
 | 相位冲突 | 相关性 < 0 | 需要处理 |
 | 单声道兼容性偏低 | 相关性 < 0.15 | 建议检查 |
-| 立体声过窄 | 宽度 < 15 % | 可优化 |
-| 立体声过宽 | 宽度 > 150 % | 建议检查 |
-| 低频非单声道 | 120 Hz 以下侧向 > 35 % | 建议检查 |
+| 立体声过窄 | 宽度 < 15% | 可优化 |
+| 立体声过宽 | 宽度 > 150% | 建议检查 |
+| 低频非单声道 | 120 Hz 以下侧向 > 35% | 建议检查 |
 | 削波 / 跨采样过载 / 爆音 | 计数 > 0 | 需要处理 / 建议检查 / 可优化 |
 | 直流偏移 | 4 s 均值 > −46 dBFS | 建议检查 |
 | 浑浊 / 刺耳 / 齿音 | 对应频段偏差 > +4.5 dB | 建议检查 |
@@ -288,27 +317,28 @@ Performance / architecture notes: `docs/performance-1.5.1.md`.
 | 整体偏亮 / 偏暗 | 高频段均值 − 中低频段均值 > ±6 dB | 建议检查 |
 | 频段空缺 | 任一频段偏差 < −8 dB | 可优化 |
 | 谐波 / 互调失真 | 2–5 次谐波相对局部谱底 > +5 dB 或互调边带 > +5 dB | 建议检查 |
-| 平顶（硬削波） | 平顶样本 > 0.05 %（> 0.5 % 需要处理） | 建议检查 / 需要处理 |
-| 混叠风险 | 高频斜率 + 顶级平坦度综合风险 ≥ 55 | 建议检查 |
-| 超低频堆积 | 40 Hz 以下占比与 20–40 / 40–80 斜率综合风险 ≥ 55 | 可优化 |
-| 瞬态完整性 | 评分 < 45 / 100 | 建议检查 |
-| 单声道折叠损失 | 损失 > 1.5 dB（> 4 dB 需要处理） | 建议检查 / 需要处理 |
+| 平顶（硬削波） | 平顶样本 > 0.05%（>0.5% 需要处理） | 建议检查 / 需要处理 |
+| 混叠风险 | 高频斜率 + 顶级平坦度综合风险 ≥55 | 建议检查 |
+| 超低频堆积 | 40 Hz 以下占比 + 20–40 / 40–80 斜率综合风险 ≥55 | 可优化 |
+| 瞬态完整性 | 评分 <45 / 100 | 建议检查 |
+| 单声道折叠损失 | 损失 >1.5 dB（>4 dB 需要处理） | 建议检查 / 需要处理 |
 | 中频掩蔽 | 200–800 Hz 相对 1–4 kHz 超出参考 6 dB 以上 | 可优化 |
 | 多层联动 | 同时有 2 层以上信号异常 | 需要处理 |
+| Apple 曲尾静音 | 测到尾部静音且 <1.0 s | 建议检查（交付前处理） |
 
-频段偏差的计算：对长期平均功率谱按倍频程宽度归一化（粉噪参考），
-再与 20 Hz–16 kHz 各段密度的均值比较，因此衡量的是**相对平衡**，
-绝对值请结合素材类型判断。
+频段偏差的计算：对长期平均功率谱按倍频程宽度归一化（粉噪参考），再与 20 Hz–16 kHz 各段密度的均值比较，因此衡量的是**相对平衡**；绝对值请结合素材类型判断。
 
 ---
 
-## 3. 构建
+## 构建（想自己搓一份的话）
 
-依赖：macOS 11+、Xcode Command Line Tools、CMake ≥ 3.22。
-JUCE 8.0.15 已放在 `.tools/JUCE`（不参与版本库提交时可自行 `git clone --depth 1 --branch 8.0.15`）。
+依赖：macOS 11+、Xcode Command Line Tools、CMake ≥3.22。JUCE 8.0.15 已放在 `.tools/JUCE`；没有的话：
 
 ```bash
-cd /Users/orch/Documents/github/vst
+git clone --depth 1 --branch 8.0.15 https://github.com/juce-framework/JUCE.git .tools/JUCE
+```
+
+```bash
 .tools/cmake-4.4.5-macos-universal/CMake.app/Contents/bin/cmake \
     -S . -B build -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles" \
     -DCMAKE_OSX_ARCHITECTURES=arm64
@@ -317,6 +347,7 @@ cd /Users/orch/Documents/github/vst
 ```
 
 产物：
+
 ```
 build/MasterLens_artefacts/Release/VST3/MasterLens.vst3
 build/MasterLens_artefacts/Release/AU/MasterLens.component
@@ -329,50 +360,28 @@ build/MasterLens_artefacts/Release/Standalone/MasterLens.app
 ./scripts/make_dmg.sh
 ```
 
-输出 `dist/MasterLens-1.0.0-macOS.dmg`，并同时复制一份到 **桌面**，内含 VST3、AU、独立版、安装 / 卸载脚本与说明。
+输出 `dist/MasterLens-1.5.1-macOS.dmg`，并复制一份到桌面；内含 VST3、AU、独立版、安装 / 卸载脚本与说明。
+
+### Windows
+
+Windows x64 / ARM64 安装包由 GitHub Actions 的 MSVC + NSIS 矩阵生成；推送 `v*` 标签即可产出 `MasterLens-1.5.1-Windows-x64.exe` 与 `-ARM64.exe`。
 
 ---
 
-## 4. 发布到 GitHub
+## 安装（macOS DMG）
 
-仓库：<https://github.com/ANTHNYLN/MasterLens>  
-Release：<https://github.com/ANTHNYLN/MasterLens/releases/tag/v1.0.0>（DMG 作为附件）
-
-本机已配置 SSH 密钥（`~/.ssh/id_ed25519`，已绑定到 GitHub 账户），远端使用：
-
-```bash
-git remote -v
-# origin  git@github.com:ANTHNYLN/MasterLens.git (fetch)
-# origin  git@github.com:ANTHNYLN/MasterLens.git (push)
-```
-
-两种发布方式（token 只走环境变量 / gh 密钥链，不写入 `.git/config`）：
-
-```bash
-# A. 已登录 gh（推荐，自动建仓库 + Release + 上传 DMG）
-.tools/gh-bin/gh auth login --hostname github.com --git-protocol ssh --web
-./scripts/publish_with_gh.sh MasterLens --public
-
-# B. 使用 PAT
-GH_TOKEN=ghp_xxxxxxxx ./scripts/publish_to_github.sh MasterLens public
-```
-
----
-
-## 5. 安装（DMG）
-
-1. 打开 DMG，双击「安装 Install.command」（右键 → 打开，可绕过 Gatekeeper 提示）。
-2. 脚本复制到：
+1. 打开 DMG，双击「安装 Install.command」；如果 Gatekeeper 闹脾气，右键 → 打开。
+2. 脚本会复制：
    - `~/Library/Audio/Plug-Ins/VST3/MasterLens.vst3`
    - `~/Library/Audio/Plug-Ins/Components/MasterLens.component`
-   - `~/Applications/MasterLens.app`（独立版，便于不打开 DAW 时试听）
+   - `~/Applications/MasterLens.app`（独立版，方便不开 DAW 试听）
 3. 重启 DAW → 音频效果 / Analyzer 分类 → MasterLens。
 
-卸载：双击 DMG 中的「卸载 Uninstall.command」。
+卸载：双击 DMG 里的「卸载 Uninstall.command」。
 
 ---
 
-## 6. 验证
+## 验证（数字不会陪撒娇）
 
 ### DSP 自检
 
@@ -381,71 +390,96 @@ GH_TOKEN=ghp_xxxxxxxx ./scripts/publish_to_github.sh MasterLens public
 ```
 
 覆盖：
-- 997 Hz 单声道 −20 dBFS 正弦 → **−23.00 LUFS**（R128 标定点）
-- 立体声双声道相同信号 → −20.00 LUFS（BS.1770 声道能量求和，+3 LU 属标准行为）
-- 真峰值 / 采样峰值标定、稳态 LRA=0、相关性 ±1、反相宽度
-- 静音门限：20 s 静音后综合响度不变、短时归零
-- 直流偏移：+0.01 偏移 → −40.00 dBFS；55 Hz 低音 → −81 dBFS（无误报）
-- 频谱标定：满幅 1 kHz 正弦 → 峰值 0 dBFS ±1.5 dB、频点误差 < 15 Hz
-- CPU 基准：60 s 立体声 48 kHz 的处理耗时（见运行输出）
 
-### 插件格式验证
+- 997 Hz 单声道 −20 dBFS 正弦 → **−23.00 LUFS**（R128 标定点）。
+- 立体声双声道相同信号 → −20.00 LUFS（BS.1770 声道能量求和，+3 LU 属标准行为）。
+- 真峰值 / 采样峰值标定、稳态 LRA=0、相关性 ±1、反相宽度。
+- 静音门限：20 s 静音后综合响度不变、短时归零。
+- 直流偏移：+0.01 偏移 → −40.00 dBFS；55 Hz 低音 → −81 dBFS（无误报）。
+- 频谱标定：满幅 1 kHz 正弦 → 峰值 0 dBFS ±1.5 dB、频点误差 <15 Hz。
+- 单声道折叠、超低占比、平顶密度、失真 / 混叠检测器、试听旁路 / 实时跟随 / 停止静音、尾部静音测量。
+- CPU 基准：60 s 立体声 48 kHz 处理耗时。
+
+当前：**50 项断言全部通过**；`auval -v aufx Maln OrcA` 通过。
+
+### 插件格式
 
 ```bash
 auval -v aufx Maln OrcA
 ```
 
+VST3 moduleinfo：Version **1.5.1**，Vendor **BerryStudio**；AU Bundle ID `com.berrystudio.masterlens`。
+
 ---
 
-## 7. 工程结构
+## 工程结构（想改代码的宝看这里）
 
 ```
-CMakeLists.txt              JUCE 插件 / 自检 / 截图工具三个目标
+CMakeLists.txt              JUCE 插件 / DSP 自检 / 离屏截图三个目标
 Source/
-  PluginProcessor.*         参数（目标响度、真峰值上限、频谱平滑）、总线、状态
-  PluginEditor.*            界面布局、30 fps 定时器、预设、报告导出
-  Text.h                    UTF-8 字面量辅助（JUCE 的 const char* 构造按 ASCII 解析）
+  PluginProcessor.*         参数、总线、分析引擎、试听引擎、状态
+  PluginEditor.*            布局、60 fps 定时器、报告导出
+  Basis.h                   四种基准 / 平台摘要
+  Delivery.h                8 个平台后果模型 + 交付要求
+  Presets.h / GenreWar.h    36 组曲风参照 + 响度战争插值
+  album/AlbumSession.*      专辑快照、门禁、风险、diff、证据哈希
+  audio/AuditionEngine.*    实时 live solo + 历史片段循环
   dsp/
-    AnalysisEngine.*        K 加权、门限直方图、LRA、真峰值、相关性、宽度、DC、爆音、
-                            超低占比、平顶密度、单声道折叠损失
-    SpectrumAnalyzer.*      8192 点 FFT、分数倍频程平滑、峰值保持、长期平均谱与频段偏差
-    DefectAnalyzer.*        谐波 / 互调、混叠、超低堆积、瞬态、单声道、掩蔽与风险评分
-    ReferenceSpectrum.*     参考轨频谱 + 响度统计（后台线程）
+    AnalysisEngine.*        K 加权、门限、LRA、TP、相关性、宽度、DC、爆音、平顶、单声道、超低
+    SpectrumAnalyzer.*      8192 FFT、分数倍频程平滑、峰值保持、长期平均谱
+    DefectAnalyzer.*        六层信号缺陷与风险评分
+    ReferenceSpectrum.*     参考轨频谱 + 响度统计
   ui/
-    Theme.*                 调色板、字体、缩放令牌、LookAndFeel
-    Logo.*                  BerryStudio × MasterLens 矢量标识
-    Widgets.h               组件声明
-    Panels.cpp              卡片、响度磁贴、M/S 条、声场仪表
-    Spectra.cpp             频谱、频段平衡
-    History.cpp             历史曲线
-    Settings.cpp            界面缩放设置面板
-    Advisor.*               规则引擎（阈值 + 迟滞 + 信号联动）
-    DetailSignal.cpp        信号健康页与联动归因
-Tests/DspTest.cpp           离线自检（42 项断言 + CPU 基准）
-Tools/UiShot.cpp            离屏渲染截图 / bench 基准（logo / 缩放 / 各页面）
-packaging/                  DMG 内的安装 / 卸载脚本、图标与说明
-scripts/make_dmg.sh         通用二进制构建 + 签名 + DMG 打包
-scripts/make_logo_svg.py    从同一几何生成 docs/logo.svg
-scripts/publish_to_github.sh  PAT 方式：创建仓库 / 推送 / 发布 Release 并上传 DMG
-scripts/publish_with_gh.sh     gh 登录后一键完成建仓库 / 推送 / Release
+    Theme.*                调色板、字体、缩放令牌
+    Logo.*                 BerryStudio × MasterLens 矢量标识
+    Panels.cpp             指标卡、M/S 条、声场仪表
+    Spectra.cpp            频谱、频段平衡
+    History.cpp            历史曲线
+    DetailSignal.cpp       信号健康 + 问题区域
+    DetailTarget.cpp       曲风目标 / 平台交付要求
+    DetailAlbum.cpp        专辑门禁
+    Settings.cpp           界面缩放
+    Advisor.*              阈值 + 迟滞 + 联动规则
+Tests/DspTest.cpp           50 项离线断言 + CPU 基准
+Tools/UiShot.cpp            离屏截图 / bench 基准
+packaging/                  DMG 安装 / 卸载脚本、图标、说明
+scripts/                    DMG / 发布 / logo 工具
 ```
 
 ---
 
-## 8. 已知限制
+## 已知限制（不藏，认真说）
 
-- ad-hoc 签名，未做 Apple 公证：首次安装可能需要「右键 → 打开」或 `xattr -dr com.apple.quarantine`。
+- ad-hoc 签名，未做 Apple 公证；首次安装可能需要「右键 → 打开」或 `xattr -dr com.apple.quarantine`。
 - 仅支持单声道 / 立体声总线（不做 5.1 / 7.1 声道权重）。
-- 频谱为 8192 点 FFT，48 kHz 下分辨率 5.86 Hz，并对 250 Hz 以下做 1/3 倍频程功率平均；
-  极低频（20–40 Hz）仍受房间与监听限制，细微差异请结合参考曲目判断。
-- 频段平衡基于长期平均谱，需要数秒素材才会稳定；静音时会保持上一状态。
-- 通用二进制已构建（arm64 + x86_64），但只在 Apple Silicon 实机验证过。
-- 显示器截图受 macOS 屏幕录制权限限制时，可用 `Tools/UiShot.cpp` 离屏渲染（`MasterLensUiShot` 目标）。
+- 频谱为 8192 点 FFT，48 kHz 下分辨率 5.86 Hz，250 Hz 以下做 1/3 倍频程功率平均；极低频仍受房间与监听限制，细微差异请结合参考曲目。
+- 频段平衡基于长期平均谱，需要数秒素材才稳定；静音时会保持上一状态。
+- 通用二进制已构建（arm64 + x86_64），但只在 Apple Silicon 实机验证过；Windows 由 CI 编译验证。
+- Apple 尾部静音需要宿主把尾部静音送入插件；如果 DAW 在最后一个样本处直接停处理，插件测不到。请在 DAW 播完尾部或检查导出文件。
+- 平台要求是静态交付参照，不是 Apple / Spotify 认证；最终以发行商当前规范为准。插件无法从实时总线验证 24-bit 源文件。
+- VST3 / AU 没有跨宿主标记写回 API，DAW 标记仍使用 CSV 交换。
+- 曲风目标是参照，不是自动合格线；平台归一化模式仍是默认。
 
 ---
 
-## 9. 许可
+## 发布 / 仓库
+
+- 仓库：<https://github.com/KNGTNPT/MasterLens>
+- 最新 Release：<https://github.com/KNGTNPT/MasterLens/releases/tag/v1.5.1>
+- 安装包：macOS DMG、Windows x64 / ARM64 EXE
+- 历史版本：`v1.5.0` … `v1.0.0`，每个 tag 都可以单独 checkout；本 README 的版本段落保留了它们的功能脉络。
+
+```bash
+git remote -v
+# origin  git@github.com:KNGTNPT/MasterLens.git (fetch/push)
+```
+
+---
+
+## 许可
 
 JUCE 8.0.15 采用 AGPLv3 / 商业双许可；本项目源码按 AGPLv3 使用 JUCE。
 
+---
 
+> 最后小声一句：MasterLens 会尽量把问题说清楚，但不会替你决定“这样够不够响”。母带是审美 + 判断 + 一点点勇气的混合物；插件只是把灯打开。呜，去听歌吧。🎧
