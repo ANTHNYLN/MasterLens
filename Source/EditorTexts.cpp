@@ -114,9 +114,15 @@ bool MasterLensAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
         return true;
     }
 
-    if (c >= '1' && c <= (char) ('0' + ml::numPages))
+    if (c >= '1' && c <= '9')
     {
         setPage ((int) (c - '1'));
+        return true;
+    }
+
+    if (c == '0')
+    {
+        setPage ((int) ml::PageId::target);
         return true;
     }
 

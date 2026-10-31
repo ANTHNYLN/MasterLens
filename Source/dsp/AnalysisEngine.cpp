@@ -230,6 +230,7 @@ void AnalysisEngine::process (const juce::AudioBuffer<float>& buffer, Stats& sta
 
     const float* left = buffer.getReadPointer (0);
     const float* right = isStereo ? buffer.getReadPointer (1) : left;
+    float blockPeak = 0.0f;
 
     for (int n = 0; n < numSamples; ++n)
     {
@@ -252,6 +253,7 @@ void AnalysisEngine::process (const juce::AudioBuffer<float>& buffer, Stats& sta
 
         const float sp = isStereo ? juce::jmax (std::abs (l), std::abs (r))
                                   : std::abs (l);
+        blockPeak = juce::jmax (blockPeak, sp);
         partialMaxSamplePeak = juce::jmax (partialMaxSamplePeak, (double) sp);
 
         // --- correlation / stereo width --------------------------------------
@@ -335,6 +337,12 @@ void AnalysisEngine::process (const juce::AudioBuffer<float>& buffer, Stats& sta
     partialProcessed += numSamples;
     elapsedSamples += (juce::uint32) numSamples;
     stats.elapsed = (double) elapsedSamples / fs;
+
+    if (blockPeak < 0.001f)
+        stats.tailSilenceSeconds = juce::jmin (3600.0f,
+            stats.tailSilenceSeconds.load() + (float) numSamples / (float) fs);
+    else
+        stats.tailSilenceSeconds = 0.0f;
 
     if (partialSamples >= partialLength)
         finishPartialBlock (stats);

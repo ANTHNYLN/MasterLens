@@ -3,6 +3,7 @@
 using ml::T;
 #include "Delivery.h"
 #include "Version.h"
+#include "GenreWar.h"
 
 #include <algorithm>
 
@@ -372,17 +373,138 @@ void MasterLensAudioProcessorEditor::auditionSignal (int index)
     };
 
     const auto& b = bands[juce::jlimit (0, 5, index)];
-    const double end = stats.elapsed;
-    const double start = juce::jmax (0.0, end - 1.5);
 
-    processor.startAudition (start, end, b.lo, b.hi, b.mono);
+    // Live solo: the selected band is filtered from the current DAW input and
+    // follows the playhead. It never reads back a loop from history.
+    processor.startLiveAudition (b.lo, b.hi, b.mono);
     lastAuditionIndex = index;
-    footerStatusText = T ("试听中 ", "Audition ") + juce::String (T (b.zh, b.en));
+    footerStatusText = T ("实时跟随 DAW · ", "Live with DAW · ") + juce::String (T (b.zh, b.en))
+                       + T ("  · Esc 停止", "  · Esc stops");
+    footerStatusColour = ml::theme::cyan;
+    repaint();
+}
+
+void MasterLensAudioProcessorEditor::auditionSignalRegion (int index, double start, double end)
+{
+    if (! stats.hasSignal || end <= start + 0.05)
+        return;
+
+    struct Band { float lo, hi; bool mono; const char* zh; const char* en; };
+    static const Band bands[6] {
+        { 2000.0f, 12000.0f, false, "谐波/互调 2–12 kHz", "harmonics/IMD 2-12 kHz" },
+        { 12000.0f, 20000.0f, false, "混叠 12–20 kHz", "aliasing 12-20 kHz" },
+        { 20.0f, 60.0f, false, "超低 20–60 Hz", "sub 20-60 Hz" },
+        { 20.0f, 20000.0f, false, "全频瞬态", "full-band transient" },
+        { 60.0f, 250.0f, true, "单声道 60–250 Hz", "mono 60-250 Hz" },
+        { 200.0f, 800.0f, false, "掩蔽 200–800 Hz", "masking 200-800 Hz" }
+    };
+
+    const auto& b = bands[juce::jlimit (0, 5, index)];
+
+    // Explicit timestamp loop: 2 s region around the detected problem.
+    processor.startAudition (juce::jmax (0.0, start), juce::jmax (start + 0.2, end),
+                             b.lo, b.hi, b.mono);
+    lastAuditionIndex = index;
+    footerStatusText = T ("循环问题区域 ", "Looping region ") + ml::fmtTime (start)
+                       + "–" + ml::fmtTime (end) + T (" · Esc 停止", " · Esc stops");
     footerStatusColour = ml::theme::cyan;
     repaint();
 }
 
 
+
+void MasterLensAudioProcessorEditor::updateSignalProblems()
+{
+    if (! signalDefects.ready || ! stats.hasSignal || stats.elapsed < 1.0)
+        return;
+
+    struct Layer
+    {
+        float risk;
+        float threshold;
+        const char* zh;
+        const char* en;
+    };
+
+    const Layer layers[6]
+    {
+        { signalDefects.distortionRisk, 55.0f, "谐波 / 互调", "harmonics / IMD" },
+        { signalDefects.aliasRisk,      55.0f, "混叠 / 高频", "aliasing / HF" },
+        { signalDefects.subRisk,        55.0f, "超低堆积", "sub build-up" },
+        { 100.0f - signalDefects.transientScore, 55.0f, "瞬态完整性", "transient" },
+        { signalDefects.monoRisk,       45.0f, "单声道折叠", "mono fold" },
+        { signalDefects.maskingRisk,    55.0f, "中频掩蔽", "mid masking" }
+    };
+
+    const double now = stats.elapsed;
+
+    for (int i = 0; i < 6; ++i)
+    {
+        const auto& l = layers[i];
+
+        if (l.risk < l.threshold || now - lastSignalProblemTime[(size_t) i] < 6.0)
+            continue;
+
+        ml::SignalProblem p;
+        p.start = juce::jmax (0.0, now - 2.0);
+        p.end = now;
+        p.card = i;
+        p.severity = l.risk >= 75.0f ? 2 : 1;
+        p.label = T (l.zh, l.en);
+
+        signalProblems.insert (signalProblems.begin(), p);
+
+        if (signalProblems.size() > 24)
+            signalProblems.resize (24);
+
+        lastSignalProblemTime[(size_t) i] = now;
+
+        addMarker (p.start, p.severity, 6,
+                   T ("问题区域 · ", "Problem region · ") + p.label
+                       + " " + ml::fmtTime (p.start) + "–" + ml::fmtTime (p.end));
+    }
+}
+
+void MasterLensAudioProcessorEditor::setTargetGenre (int index)
+{
+    targetGenreIndex = juce::jlimit (0, ml::presets::customIndex - 1, index);
+    processor.apvts.state.setProperty ("targetGenre", targetGenreIndex, nullptr);
+    detail.invalidateDisplays();
+    updateRail();
+    repaint();
+}
+
+void MasterLensAudioProcessorEditor::setTargetWar (float percent)
+{
+    targetWarPct = juce::jlimit (0.0f, 100.0f, percent);
+    processor.apvts.state.setProperty ("targetWarPct", targetWarPct, nullptr);
+    detail.invalidateDisplays();
+    updateRail();
+    repaint();
+}
+
+void MasterLensAudioProcessorEditor::applyTargetPlan()
+{
+    const float lufs = ml::presets::war::warTargetLufs (targetGenreIndex, targetWarPct);
+    const auto& e = ml::presets::entries[targetGenreIndex];
+
+    setParameter ("targetLufs", lufs);
+    setParameter ("tpCeiling", e.ceiling);
+    basisMode = ml::BasisMode::manual;
+    processor.apvts.state.setProperty ("basisMode", (int) basisMode, nullptr);
+    lraTargetSetting = ml::presets::war::warTargetLra (targetGenreIndex, targetWarPct);
+    processor.apvts.state.setProperty ("lraTarget", lraTargetSetting, nullptr);
+
+    syncPresetToParameters();
+    updateTexts();
+    detail.refreshTexts();
+    detail.invalidateDisplays();
+    updateRail();
+    footerStatusText = T ("已应用曲风目标 ", "Genre target applied ")
+                       + ml::num (lufs) + " LUFS";
+    footerStatusColour = ml::theme::good;
+    repaint();
+}
 
 void MasterLensAudioProcessorEditor::setParameter (const char* id, float value)
 {
@@ -402,6 +524,8 @@ void MasterLensAudioProcessorEditor::resetAnalysis()
     markers.clear();
     tpEvents.clear();
     issueCache.clear();
+    signalProblems.clear();
+    lastSignalProblemTime.fill (-100.0);
 
     // Snapshots describe a musical moment; clearing the session clears them too.
     snapshots[0] = ml::Snapshot {};

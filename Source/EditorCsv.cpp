@@ -2,6 +2,7 @@
 
 using ml::T;
 #include "Delivery.h"
+#include "GenreWar.h"
 #include "Version.h"
 
 //==============================================================================
@@ -31,6 +32,17 @@ juce::String MasterLensAudioProcessorEditor::buildReportCsv() const
     line ("loudness", "psrDb", ml::num (stats.psr));
     line ("loudness", "psrMinDb", ml::num (stats.psrMin));
     line ("loudness", "targetLufs", ml::num (processor.getTargetLufs()));
+
+    {
+        const int gi = juce::jlimit (0, ml::presets::customIndex - 1, targetGenreIndex);
+        const auto& g = ml::presets::entries[gi];
+        line ("genreTarget", "genre", T (g.zh, g.en));
+        line ("genreTarget", "warParticipationPct", juce::String (juce::roundToInt (targetWarPct)));
+        line ("genreTarget", "targetLufs", ml::num (ml::presets::war::warTargetLufs (gi, targetWarPct)));
+        line ("genreTarget", "suggestedLra", ml::num (ml::presets::war::warTargetLra (gi, targetWarPct)));
+        line ("genreTarget", "ceilingDbtp", ml::num (g.ceiling));
+        line ("genreTarget", "tailSilenceMs", ml::num (stats.tailSilenceMs, 0));
+    }
 
     line ("truePeak", "maxDbtp", ml::num (stats.truePeakDb));
     line ("truePeak", "ceilingDbtp", ml::num (processor.getCeilingDb()));

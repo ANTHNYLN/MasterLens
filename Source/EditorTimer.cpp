@@ -2,6 +2,7 @@
 
 using ml::T;
 #include "Delivery.h"
+#include "GenreWar.h"
 #include "ui/StatusText.h"
 
 using ml::statusLabel;
@@ -120,6 +121,8 @@ void MasterLensAudioProcessorEditor::timerCallback()
         signalDefects = ml::analyseSignalDefects (analyzer.getAverageSpectrumDb(),
                                                   analyzer.getBinHz(), stats);
 
+    updateSignalProblems();
+
     for (const auto& e : tpEvents)
         addMarker (e.time, 2, 0, T ("真峰值 +", "TP +") + ml::fmt1 (e.overshootDb) + " dBTP");
 
@@ -145,9 +148,15 @@ void MasterLensAudioProcessorEditor::timerCallback()
     us.resonances = resos;
     us.tpEvents = tpEvents;
     us.markers = markers;
+    us.signalProblems = signalProblems;
     us.defects = signalDefects;
     us.basis = basis;
     us.platform = platform;
+    us.targetGenreIndex = targetGenreIndex;
+    us.targetWarPct = targetWarPct;
+    us.targetPlanLufs = ml::presets::war::warTargetLufs (targetGenreIndex, targetWarPct);
+    us.targetPlanLra = ml::presets::war::warTargetLra (targetGenreIndex, targetWarPct);
+    us.targetPlanCeiling = ml::presets::entries[targetGenreIndex].ceiling;
 
     if (selectedPage == (int) ml::PageId::album)
     {

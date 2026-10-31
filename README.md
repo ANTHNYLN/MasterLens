@@ -12,6 +12,8 @@ macOS / Windows 音频总线插件（VST3 / AU / 独立版），C++17 + JUCE 8�
 
 ![专辑统一与交付门禁](docs/album-1.5.png)
 
+![曲风目标与平台交付要求](docs/target-1.5.1.png)
+
 插件默认**不处理任何音频**（零延迟、逐位旁路），只做测量、归一化后果模拟与信号缺陷诊断；只有点击问题试听时才会临时输出所选片段 / 频段。插在总线 / 母带链最后一级即可。
 
 ---
@@ -26,11 +28,26 @@ macOS / Windows 音频总线插件（VST3 / AU / 独立版），C++17 + JUCE 8�
 - **UI**: dark professional theme (light included), 100 / 125 / 150 / 175 / 200 % interface zoom that scales type, rows and the window together, bilingual Chinese/English (stored in plug-in state), keyboard shortcuts, A/B snapshot compare, exportable TXT / JSON / CSV report.
 - **Basis, not genre targets**: choose platform-normalisation consequence, reference tracks, album median or a manual reference. The platform view shows the attenuation, service limiting and wasted loudness; reference / album views show LUFS, LRA, PLR and spectral deltas. Fixed genre loudness is no longer a pass line.
 - **Album session / release gate**: capture tracks into a shared, versioned album snapshot; compare LUFS / LRA / PLR / TP / spectral deviation against the album median; rank platform, codec, signal, mono and inconsistency risks; toggle custom blocking rules; export a reproducible JSON + TXT proof with snapshot and evidence hashes and a previous-revision diff.
-- **Risk audition and marker exchange**: click a signal card or album risk to loop the recent slice, band-limit it and loudness-match it (Esc stops); export / import marker CSV for DAW marker tables. Host automation exposes reset / capture / proof / marker commands.
+- **Risk audition and marker exchange**: signal-health cards solo the selected band from the live bus in sync with the DAW; detected problem regions get timestamps and can be looped explicitly. Export / import marker CSV for DAW marker tables. Host automation exposes reset / capture / proof / marker commands.
 - **Verified**: `auval` passes, **46** offline DSP assertions pass (incl. −23.00 LUFS R128 calibration, mono-fold, sub-share, flat-top, defect-detector and audition bypass checks), ~0.31 % of one core at 48 kHz stereo. 1.5 UI benchmark: ~2.7 % loudness page, ~3.7 % spectrum page (60 fps), ~1.4 % album page.
 - **Install**: open the DMG, run `安装 Install.command`, restart the DAW, insert on the master bus.
 
 Build: `./scripts/make_dmg.sh` (universal binary, ad-hoc signed).
+
+Performance / architecture notes: `docs/performance-1.5.1.md`.
+
+---
+
+## 1.5.1 更新
+
+- **实时 Solo 跟随 DAW（修复 1.5.0 的循环回放）**：信号健康六张卡片现在从当前总线输入直接做频段滤波，跟随宿主播放头实时输出；DAW 暂停 / 停止时立即静音，不再随机循环历史片段。Esc 或再次点击停止。
+- **问题区域时间戳循环（新增）**：当失真、混叠、超低堆积、瞬态、单声道折叠或中频掩蔽越过阈值时，自动生成带时间戳的问题区域（2 s 窗口）并写入时间线；点击问题区域即可循环该段、按对应频段试听。卡片点击 = 实时跟随，时间戳点击 = 定向循环，两种监听互不混淆。
+- **窗口适配 MacBook Air 默认 DPI**：最小布局从 900×620 降到 **880×560**，默认基准从 1180×760 降到 **1120×700**；首次启动按屏幕可用区域自动选择缩放，旧工程保存的过大的 150%/200% 会在小屏上自动降到可显示档位，并预留标题栏 / Dock 空间。
+- **曲风响度目标模块（恢复 + 独立页）**：新增「曲风目标 / 交付」页，恢复 36 组曲风 / 平台参照；滑块 0–100% 控制“响度战争参与度”：50% = 曲风标准，0% = 该曲风最安静的发行观测值，100% = 最响的发行观测值。目标 LUFS、建议 LRA、真峰值上限随滑块实时计算；「应用为目标」写入手动参考基准，不会偷偷改变平台模式。
+- **平台交付要求表（独立模块）**：同一页并列 Spotify / Apple Music / YouTube / Tidal / Amazon / SoundCloud / 播客 / 俱乐部要求，包含 LUFS、dBTP、编解码器、归一化行为、真峰值与尾部静音检查；Apple Digital Masters 的曲尾 ≥1 s 无波形 / 数字静音作为单独状态，测量到尾部静音时才会判定（避免播放中途误报）。
+- **尾部静音测量**：分析线程新增 trailing digital silence（-60 dBFS 阈值）计数，目标页 / 报告 / CSV 可读取；用于 Apple 曲尾交付检查。
+- **报告扩展**：TXT / JSON / CSV 增加曲风目标、参与度、建议 LRA、平台编解码器与尾部静音字段。
+- **验证**：**50** 项离线 DSP 断言通过（新增实时跟随、停止即静音、尾部静音测量）；`auval` 通过；版本号 **1.5.1**。
 
 ---
 

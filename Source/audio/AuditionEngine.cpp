@@ -39,6 +39,7 @@ void AuditionEngine::prepare (double newSampleRate, int)
 {
     active.store (false, std::memory_order_release);
     pendingStart.store (false, std::memory_order_release);
+    mode.store ((int) Mode::off, std::memory_order_release);
 
     sampleRate = newSampleRate > 0.0 ? newSampleRate : 48000.0;
     ringLength = juce::jmax (1024, (int) std::round (sampleRate * 12.0));
@@ -47,6 +48,7 @@ void AuditionEngine::prepare (double newSampleRate, int)
     writePos = 0;
     totalSamples = 0;
     loopStart = loopLength = loopPos = 0;
+    liveFade = 0;
     gain = 1.0f;
     fadeSamples = juce::jmax (1, (int) std::round (sampleRate * 0.005));
 }
@@ -55,11 +57,15 @@ void AuditionEngine::reset()
 {
     active.store (false, std::memory_order_release);
     pendingStart.store (false, std::memory_order_release);
+    mode.store ((int) Mode::off, std::memory_order_release);
     std::fill (left.begin(), left.end(), 0.0f);
     std::fill (right.begin(), right.end(), 0.0f);
     writePos = 0;
     totalSamples = 0;
     loopStart = loopLength = loopPos = 0;
+    liveFade = 0;
+    gain = 1.0f;
+    hpL.reset(); hpR.reset(); lpL.reset(); lpR.reset();
 }
 
 void AuditionEngine::start (double startSeconds, double endSeconds, float low, float high, bool monoFold)
@@ -75,6 +81,20 @@ void AuditionEngine::start (double startSeconds, double endSeconds, float low, f
     requestedLo.store (juce::jlimit (20.0f, 20000.0f, low), std::memory_order_relaxed);
     requestedHi.store (juce::jlimit (20.0f, 20000.0f, high), std::memory_order_relaxed);
     requestedMono.store (monoFold, std::memory_order_relaxed);
+    mode.store ((int) Mode::loop, std::memory_order_relaxed);
+    active.store (false, std::memory_order_release);
+    pendingStart.store (true, std::memory_order_release);
+}
+
+void AuditionEngine::startLive (float low, float high, bool monoFold)
+{
+    if (high < low)
+        std::swap (low, high);
+
+    requestedLo.store (juce::jlimit (20.0f, 20000.0f, low), std::memory_order_relaxed);
+    requestedHi.store (juce::jlimit (20.0f, 20000.0f, high), std::memory_order_relaxed);
+    requestedMono.store (monoFold, std::memory_order_relaxed);
+    mode.store ((int) Mode::live, std::memory_order_relaxed);
     active.store (false, std::memory_order_release);
     pendingStart.store (true, std::memory_order_release);
 }
@@ -83,6 +103,7 @@ void AuditionEngine::stop()
 {
     active.store (false, std::memory_order_release);
     pendingStart.store (false, std::memory_order_release);
+    mode.store ((int) Mode::off, std::memory_order_release);
 }
 
 void AuditionEngine::process (juce::AudioBuffer<float>& buffer)
@@ -105,6 +126,33 @@ void AuditionEngine::process (juce::AudioBuffer<float>& buffer)
 
     if (pendingStart.exchange (false, std::memory_order_acq_rel))
     {
+        const float lo = requestedLo.load (std::memory_order_relaxed);
+        const float hi = requestedHi.load (std::memory_order_relaxed);
+        const bool fullBand = lo <= 25.0f && hi >= 19000.0f;
+
+        Biquad tHpL, tHpR, tLpL, tLpR;
+
+        if (! fullBand)
+        {
+            tHpL.setHighPass (sampleRate, lo, 0.707);
+            tHpR = tHpL;
+            tLpL.setLowPass (sampleRate, hi, 0.707);
+            tLpR = tLpL;
+        }
+
+        if (mode.load (std::memory_order_relaxed) == (int) Mode::live)
+        {
+            hpL = tHpL;
+            hpR = tHpR;
+            lpL = tLpL;
+            lpR = tLpR;
+            loopStart = loopLength = loopPos = 0;
+            liveFade = 0;
+            gain = 1.0f;
+            active.store (true, std::memory_order_release);
+        }
+        else
+        {
         const double now = (double) totalSamples / sampleRate;
         double startSec = requestedStart.load (std::memory_order_relaxed);
         double endSec = requestedEnd.load (std::memory_order_relaxed);
@@ -134,20 +182,6 @@ void AuditionEngine::process (juce::AudioBuffer<float>& buffer)
         loopStart = (writePos - startOffset + ringLength) % ringLength;
         loopLength = juce::jmin (length, ringLength);
         loopPos = 0;
-
-        const float lo = requestedLo.load (std::memory_order_relaxed);
-        const float hi = requestedHi.load (std::memory_order_relaxed);
-        const bool fullBand = lo <= 25.0f && hi >= 19000.0f;
-
-        Biquad tHpL, tHpR, tLpL, tLpR;
-
-        if (! fullBand)
-        {
-            tHpL.setHighPass (sampleRate, lo, 0.707);
-            tHpR = tHpL;
-            tLpL.setLowPass (sampleRate, hi, 0.707);
-            tLpR = tLpL;
-        }
 
         double fullPower = 0.0, bandPower = 0.0;
         float bandPeak = 0.0f;
@@ -201,14 +235,92 @@ void AuditionEngine::process (juce::AudioBuffer<float>& buffer)
         lpL = tLpL;
         lpR = tLpR;
         active.store (true, std::memory_order_release);
+        }
     }
 
-    if (! active.load (std::memory_order_acquire) || loopLength <= 0)
+    if (! active.load (std::memory_order_acquire))
         return;
 
     auto* outL = buffer.getWritePointer (0);
     auto* outR = buffer.getNumChannels() > 1 ? buffer.getWritePointer (1) : nullptr;
     const bool monoFold = requestedMono.load (std::memory_order_relaxed);
+
+    if (mode.load (std::memory_order_relaxed) == (int) Mode::live)
+    {
+        float inputPeak = 0.0f;
+
+        for (int i = 0; i < n; ++i)
+            inputPeak = juce::jmax (inputPeak, juce::jmax (std::abs (inL[i]), std::abs (inR[i])));
+
+        if (inputPeak < 1.0e-6f)
+        {
+            hpL.reset(); hpR.reset(); lpL.reset(); lpR.reset();
+            gain = 1.0f;
+            buffer.clear();
+            return;
+        }
+
+        double fullPower = 0.0, bandPower = 0.0;
+        float bandPeak = 0.0f;
+
+        for (int i = 0; i < n; ++i)
+        {
+            // Read both channels before writing: a mono buffer aliases inL/outL.
+            const float l = inL[i];
+            const float r = inR[i];
+
+            float fl = lpL.process (hpL.process (l));
+            float fr = lpR.process (hpR.process (r));
+
+            if (monoFold)
+            {
+                const float full = 0.5f * (l + r);
+                const float band = 0.5f * (fl + fr);
+                fullPower += (double) full * full;
+                bandPower += (double) band * band;
+                bandPeak = juce::jmax (bandPeak, std::abs (band));
+                fl = fr = band;
+            }
+            else
+            {
+                fullPower += 0.5 * ((double) l * l + (double) r * r);
+                bandPower += 0.5 * ((double) fl * fl + (double) fr * fr);
+                bandPeak = juce::jmax (bandPeak, juce::jmax (std::abs (fl), std::abs (fr)));
+            }
+
+            const float fade = juce::jlimit (0.0f, 1.0f,
+                (float) (liveFade + i + 1) / (float) fadeSamples);
+            const float f = fade * gain;
+
+            outL[i] = juce::jlimit (-1.0f, 1.0f, fl * f);
+
+            if (outR != nullptr)
+                outR[i] = juce::jlimit (-1.0f, 1.0f, fr * f);
+        }
+
+        liveFade = juce::jmin (fadeSamples, liveFade + n);
+
+        const double fullRms = std::sqrt (fullPower / juce::jmax (1, n));
+        const double bandRms = std::sqrt (bandPower / juce::jmax (1, n));
+
+        float target = 1.0f;
+
+        if (bandRms > 1.0e-7)
+            target = (float) juce::jlimit (0.25, 8.0, fullRms / bandRms);
+
+        if (bandPeak > 1.0e-6f)
+            target = juce::jmin (target, 0.96f / bandPeak);
+
+        gain += (juce::jlimit (0.05f, 8.0f, target) - gain) * 0.20f;
+
+        for (int ch = 2; ch < buffer.getNumChannels(); ++ch)
+            buffer.clear (ch, 0, n);
+
+        return;
+    }
+
+    if (loopLength <= 0)
+        return;
 
     for (int i = 0; i < n; ++i)
     {

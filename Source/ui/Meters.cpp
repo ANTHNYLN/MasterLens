@@ -19,9 +19,12 @@ void LevelMeters::paintRow (juce::Graphics& g, juce::Rectangle<int> area, const 
     g.setFont (uiFont (tokens::aux));
     g.drawText (label, row.getX(), row.getY() + 2, 58, 16, juce::Justification::centredLeft);
 
-    g.setColour (theme::textFaint);
-    g.setFont (uiFont (tokens::unit));
-    g.drawText (windowText, row.getX(), row.getY() + 18, 58, 14, juce::Justification::centredLeft);
+    if (row.getHeight() >= 36)
+    {
+        g.setColour (theme::textFaint);
+        g.setFont (uiFont (tokens::unit));
+        g.drawText (windowText, row.getX(), row.getY() + 18, 58, 14, juce::Justification::centredLeft);
+    }
 
     auto readout = row.removeFromRight (64);
     const bool over = valueDb > 0.0f;

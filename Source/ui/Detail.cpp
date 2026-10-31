@@ -1,5 +1,6 @@
 #include "Modules.h"
 #include "../Delivery.h"
+#include "../GenreWar.h"
 
 #include <utility>
 
@@ -29,6 +30,33 @@ DetailArea::DetailArea()
     addChildComponent (albumImportMarkers);
     addChildComponent (albumTrackName);
     addChildComponent (albumNameEditor);
+
+    addChildComponent (genreBox);
+    addChildComponent (warSlider);
+    addChildComponent (applyTarget);
+
+    genreBox.onChange = [this]
+    {
+        if (onTargetGenreChanged != nullptr)
+            onTargetGenreChanged (genreBox.getSelectedId() - 1);
+    };
+
+    warSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    warSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 62, 24);
+    warSlider.setRange (0.0, 100.0, 1.0);
+    warSlider.setDoubleClickReturnValue (true, 50.0);
+    warSlider.setTextValueSuffix (" %");
+    warSlider.onValueChange = [this]
+    {
+        if (onTargetWarChanged != nullptr)
+            onTargetWarChanged ((float) warSlider.getValue());
+    };
+
+    applyTarget.onClick = [this]
+    {
+        if (onApplyTargetPlan != nullptr)
+            onApplyTargetPlan();
+    };
 
     for (auto& b : albumRuleButtons)
         addChildComponent (b);
@@ -90,6 +118,19 @@ void DetailArea::refreshTexts()
     albumExportMarkers.setButtonText (T ("导出标记", "Export markers"));
     albumImportMarkers.setButtonText (T ("导入标记", "Import markers"));
 
+    genreBox.clear (juce::dontSendNotification);
+
+    for (int i = 0; i < ml::presets::customIndex; ++i)
+        genreBox.addItem (T (ml::presets::entries[i].zh, ml::presets::entries[i].en), i + 1);
+
+    genreBox.setSelectedId (juce::jlimit (1, ml::presets::customIndex,
+                                          state.targetGenreIndex + 1),
+                            juce::dontSendNotification);
+    genreBox.setTooltip (T ("曲风参照：标准值来自 1.5 曲风表；可用下方滑块调整响度战争参与度。",
+                            "Genre reference from the static table; use the slider to set loudness-war participation."));
+
+    applyTarget.setButtonText (T ("应用为目标", "Apply as target"));
+
     const juce::String ruleLabels[5] {
         T ("平台限幅", "Platform"),
         T ("真峰值", "True peak"),
@@ -133,6 +174,9 @@ void DetailArea::hideAllChildren()
     albumImportMarkers.setVisible (false);
     albumTrackName.setVisible (false);
     albumNameEditor.setVisible (false);
+    genreBox.setVisible (false);
+    warSlider.setVisible (false);
+    applyTarget.setVisible (false);
 
     for (auto& b : albumRuleButtons)
         b.setVisible (false);
@@ -219,15 +263,18 @@ void DetailArea::mouseDown (const juce::MouseEvent& e)
     if (page != PageId::signal)
         return;
 
-    auto area = contentArea().withTrimmedTop (30);
-    area.removeFromTop (46);
-    area.removeFromTop (tokens::gap);
+    for (int i = 0; i < 4 && i < (int) state.signalProblems.size(); ++i)
+    {
+        if (signalChipBounds[(size_t) i].contains (e.getPosition())
+            && onAuditionSignalRegion != nullptr)
+        {
+            const auto& p = state.signalProblems[(size_t) i];
+            onAuditionSignalRegion (p.card, p.start, p.end);
+            return;
+        }
+    }
 
-    const int footerH = juce::jlimit (78, 108, area.getHeight() / 3);
-    auto grid = area;
-    grid.removeFromBottom (footerH);
-    grid.removeFromBottom (tokens::gap);
-
+    const auto grid = signalGridBounds;
     const int gap = tokens::gap;
     const int w = (grid.getWidth() - gap * 2) / 3;
     const int h = (grid.getHeight() - gap) / 2;
@@ -251,7 +298,7 @@ void DetailArea::setState (UiState s)
     state = std::move (s);
     ++tick;
 
-    const bool empty = ! state.stats.hasSignal && page != PageId::album;
+    const bool empty = ! state.stats.hasSignal && page != PageId::album && page != PageId::target;
 
     if (empty != emptyMode)
     {
@@ -311,6 +358,17 @@ void DetailArea::setState (UiState s)
                 repaint();
             }
             break;
+
+        case PageId::target:
+            if ((tick % 6) == 0)
+            {
+                genreBox.setSelectedId (juce::jlimit (1, ml::presets::customIndex,
+                                                      state.targetGenreIndex + 1),
+                                        juce::dontSendNotification);
+                warSlider.setValue (state.targetWarPct, juce::dontSendNotification);
+                repaint();
+            }
+            break;
         case PageId::truePeak:
             if ((tick % 4) == 0)
                 repaint();
@@ -332,15 +390,18 @@ void DetailArea::resized()
     {
         case PageId::loudness:
         {
-            const int cardsH = area.getWidth() >= 560 ? tokens::cardHeight
-                                                      : tokens::cardHeight * 2 + tokens::gap;
+            const bool compact = area.getHeight() < 300;
+            const int gap = compact ? 6 : tokens::gap;
+            const int cardsH = area.getWidth() >= 560
+                                   ? (compact ? 92 : tokens::cardHeight)
+                                   : tokens::cardHeight * 2 + tokens::gap;
 
             tiles.setBounds (area.removeFromTop (juce::jmin (cardsH, area.getHeight() / 2)));
-            area.removeFromTop (tokens::gap);
+            area.removeFromTop (gap);
 
-            const int metersH = juce::jlimit (88, 96, area.getHeight() / 3);
+            const int metersH = compact ? 68 : juce::jlimit (88, 96, area.getHeight() / 3);
             levelBars.setBounds (area.removeFromTop (metersH));
-            area.removeFromTop (tokens::gap);
+            area.removeFromTop (gap);
 
             history.setBounds (area);
             tiles.setVisible (true);
@@ -445,6 +506,53 @@ void DetailArea::resized()
 
             for (auto& b : albumRuleButtons)
                 b.setVisible (true);
+            break;
+        }
+
+        case PageId::signal:
+        {
+            auto content = area;
+            content.removeFromTop (40 + 8);   // verdict strip + gap
+
+            const int footerH = juce::jlimit (86, 104, content.getHeight() / 3);
+            auto bottom = content.removeFromBottom (footerH);
+
+            signalProblemRowBounds = bottom.removeFromTop (28);
+            bottom.removeFromTop (4);
+            signalAttributionBounds = bottom;
+
+            content.removeFromBottom (tokens::gap);
+            signalGridBounds = content;
+
+            auto row = signalProblemRowBounds;
+            row.removeFromLeft (juce::jmin (78, row.getWidth() / 5));
+            const int chipGap = 6;
+            const int chipW = (row.getWidth() - chipGap * 3) / 4;
+
+            for (int i = 0; i < 4; ++i)
+            {
+                signalChipBounds[(size_t) i] = row.removeFromLeft (chipW);
+                row.removeFromLeft (chipGap);
+            }
+
+            break;
+        }
+
+        case PageId::target:
+        {
+            auto controls = area.removeFromTop (58);
+            auto row = controls;
+            const int genreW = juce::jmin (210, row.getWidth() / 3);
+            genreBox.setBounds (row.removeFromLeft (genreW)
+                                   .withSizeKeepingCentre (genreW, 28));
+            row.removeFromLeft (10);
+            applyTarget.setBounds (row.removeFromRight (118).withSizeKeepingCentre (118, 28));
+            row.removeFromRight (10);
+            warSlider.setBounds (row.withSizeKeepingCentre (row.getWidth(), 28));
+
+            genreBox.setVisible (true);
+            warSlider.setVisible (true);
+            applyTarget.setVisible (true);
             break;
         }
 

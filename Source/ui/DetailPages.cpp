@@ -16,6 +16,7 @@ static juce::String pageTitle (PageId p)
         case PageId::signal:      return T ("信号健康", "Signal health");
         case PageId::diagnostics: return T ("混音诊断", "Mix diagnostics");
         case PageId::timeline:    return T ("时间线", "Timeline");
+        case PageId::target:      return T ("曲风响度目标 / 平台交付要求", "Genre loudness target / delivery requirements");
     }
 
     return {};
@@ -99,6 +100,11 @@ void DetailArea::paint (juce::Graphics& g)
         case PageId::timeline:
             meta = T ("双击时间条添加标记", "double-click to add a marker");
             break;
+
+        case PageId::target:
+            meta = T ("曲风标准 50% · 滑块调整参与度", "genre reference at 50% · slider sets participation")
+                 + ml::sep() + T ("平台交付要求", "platform delivery requirements");
+            break;
     }
 
     paintPageHeader (g, meta);
@@ -120,6 +126,7 @@ void DetailArea::paint (juce::Graphics& g)
         case PageId::signal:      paintSignal (g);         break;
         case PageId::diagnostics: paintDiagnostics (g);    break;
         case PageId::timeline:    paintTimeline (g);       break;
+        case PageId::target:      paintTarget (g);         break;
     }
 }
 

@@ -24,6 +24,18 @@ struct Marker
     juce::String text;
 };
 
+/** A timestamped region that triggered a signal-health layer. The region is a
+    fixed 2 s window around the moment the layer crossed its warning threshold;
+    it is used for the explicit "loop this problem area" audition. */
+struct SignalProblem
+{
+    double start = 0.0;
+    double end = 0.0;
+    int card = 0;
+    int severity = 1;
+    juce::String label;
+};
+
 /** Markers that happen within one short window, merged into one attribution. */
 struct MergedMarkerEvent
 {
@@ -47,12 +59,18 @@ struct UiState
     std::vector<SpectrumAnalyzer::Resonance> resonances;
     std::vector<TpEvent> tpEvents;
     std::vector<Marker> markers;
+    std::vector<SignalProblem> signalProblems;
     SignalDefects defects;
     BasisContext basis;
     AlbumSnapshot album;
     album::GateResult albumGate;
     album::Diff albumDiff;
     PlatformSummary platform;
+    int targetGenreIndex = 16;
+    float targetWarPct = 50.0f;
+    float targetPlanLufs = -9.5f;
+    float targetPlanLra = 6.0f;
+    float targetPlanCeiling = -1.0f;
     bool hasTonalBasis = false;
     StatsSnapshot referenceStats;
     bool hasReferenceStats = false;
@@ -67,8 +85,8 @@ struct UiState
     bool snapshotValid[2] { false, false };
 };
 
-enum class PageId { loudness = 0, truePeak, spectrum, stereo, delivery, album, signal, diagnostics, timeline };
-constexpr int numPages = 9;
+enum class PageId { loudness = 0, truePeak, spectrum, stereo, delivery, album, signal, diagnostics, timeline, target };
+constexpr int numPages = 10;
 
 //==============================================================================
 /** Left hand module list: verdict header + one 40 px row per module. */
@@ -163,7 +181,11 @@ public:
     std::function<void()> onAlbumClear;
     std::function<void (int, bool)> onAlbumRuleChanged;
     std::function<void (int)> onAuditionSignal;
+    std::function<void (int, double, double)> onAuditionSignalRegion;
     std::function<void (const juce::String&)> onAuditionRiskDetail;
+    std::function<void (int)> onTargetGenreChanged;
+    std::function<void (float)> onTargetWarChanged;
+    std::function<void()> onApplyTargetPlan;
 
     juce::TextButton& getImportButton() noexcept { return refImport; }
     juce::TextButton& getClearButton() noexcept { return refClear; }
@@ -195,6 +217,7 @@ private:
     void paintSignal (juce::Graphics&);
     void paintDiagnostics (juce::Graphics&);
     void paintTimeline (juce::Graphics&);
+    void paintTarget (juce::Graphics&);
     void paintReferenceBar (juce::Graphics&, juce::Rectangle<int>);
 
     PageId page = PageId::loudness;
@@ -218,5 +241,12 @@ private:
     juce::TextButton albumExportMarkers, albumImportMarkers;
     std::array<juce::TextButton, 5> albumRuleButtons;
     juce::TextEditor albumTrackName, albumNameEditor;
+
+    juce::ComboBox genreBox;
+    juce::Slider warSlider;
+    juce::TextButton applyTarget;
+
+    juce::Rectangle<int> signalProblemRowBounds, signalAttributionBounds, signalGridBounds;
+    std::array<juce::Rectangle<int>, 4> signalChipBounds;
 };
 } // namespace ml

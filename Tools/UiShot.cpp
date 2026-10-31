@@ -33,6 +33,7 @@ public:
         aboutShot = commandLine.containsIgnoreCase ("about");
         expandedShot = commandLine.containsIgnoreCase ("expand");
         smallShot = commandLine.containsIgnoreCase ("small");
+        minShot = commandLine.containsIgnoreCase ("minsize");
         lightShot = commandLine.containsIgnoreCase ("light");
         emptyShot = commandLine.containsIgnoreCase ("empty");
         snapShot = commandLine.containsIgnoreCase ("snap");
@@ -69,8 +70,8 @@ public:
         processor->apvts.state.setProperty ("uiScale", scale, nullptr);
 
         editor = std::make_unique<MasterLensAudioProcessorEditor> (*processor);
-        editor->setSize (juce::roundToInt ((smallShot ? 900.0f : 1280.0f) * scale),
-                         juce::roundToInt ((smallShot ? 620.0f : 820.0f) * scale));
+        editor->setSize (juce::roundToInt ((minShot ? 880.0f : (smallShot ? 900.0f : 1280.0f)) * scale),
+                         juce::roundToInt ((minShot ? 560.0f : (smallShot ? 620.0f : 820.0f)) * scale));
 
         std::printf ("UiShot %s page=%d scale=%.2f size=%dx%d\n", ml::kVersion, pageShot,
                      scale, editor->getWidth(), editor->getHeight());
@@ -269,6 +270,7 @@ private:
         if (expandedShot) name << "_expanded";
         if (aboutShot)    name << "_about";
         if (smallShot)    name << "_small";
+        if (minShot)      name << "_min";
         if (lightShot)    name << "_light";
         if (emptyShot)    name << "_empty";
         if (snapShot)     name << "_snap";
@@ -302,6 +304,7 @@ private:
     bool aboutShot = false, genreShot = false;
     bool expandedShot = false;
     bool smallShot = false;
+    bool minShot = false;
     bool lightShot = false;
     bool emptyShot = false;
     bool snapShot = false;

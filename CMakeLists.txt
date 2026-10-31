@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(MasterLens VERSION 1.5.0 LANGUAGES C CXX)
+project(MasterLens VERSION 1.5.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -14,7 +14,7 @@ endif()
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/.tools/JUCE ${CMAKE_BINARY_DIR}/JUCE EXCLUDE_FROM_ALL)
 
 juce_add_plugin(MasterLens
-    VERSION 1.5.0
+    VERSION 1.5.1
     COMPANY_NAME "BerryStudio"
     BUNDLE_ID "com.berrystudio.masterlens"
     PLUGIN_MANUFACTURER_CODE OrcA
@@ -73,6 +73,7 @@ set(MASTERLENS_SOURCES
     Source/ui/DetailMix.cpp
     Source/ui/DetailAlbum.cpp
     Source/ui/DetailSignal.cpp
+    Source/ui/DetailTarget.cpp
     Source/ui/DetailDiag.cpp
     Source/ui/DetailTime.cpp
     Source/ui/EventMerge.cpp

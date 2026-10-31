@@ -22,14 +22,15 @@ namespace
     void paintCard (juce::Graphics& g, juce::Rectangle<int> area, const CardSpec& c)
     {
         const auto r = area.toFloat().reduced (0.5f);
+        const bool compact = area.getHeight() < 96;
 
         g.setColour (theme::cardAlt);
         g.fillRoundedRectangle (r, tokens::radiusCard);
         g.setColour (theme::border);
         g.drawRoundedRectangle (r, tokens::radiusCard, 1.0f);
 
-        auto inner = area.reduced (14, 11);
-        auto titleRow = inner.removeFromTop (18);
+        auto inner = area.reduced (14, compact ? 8 : 11);
+        auto titleRow = inner.removeFromTop (compact ? 16 : 18);
 
         g.setColour (theme::textDim);
         g.setFont (uiFont (tokens::label, true));
@@ -45,10 +46,10 @@ namespace
         g.drawText (T ("风险 ", "risk ") + juce::String (juce::roundToInt (c.risk)),
                     chip, juce::Justification::centred);
 
-        auto valueRow = inner.removeFromTop (juce::jmin (38, inner.getHeight() / 2));
+        auto valueRow = inner.removeFromTop (compact ? 24 : juce::jmin (38, inner.getHeight() / 2));
 
         g.setColour (colour);
-        g.setFont (monoFont (juce::jmin (28.0f, (float) valueRow.getHeight() * 0.82f), true));
+        g.setFont (monoFont (compact ? 21.0f : juce::jmin (28.0f, (float) valueRow.getHeight() * 0.82f), true));
         g.drawText (c.primary, valueRow, juce::Justification::centredLeft, false);
 
         if (c.unit.isNotEmpty())
@@ -64,25 +65,28 @@ namespace
 
         g.setColour (theme::textFaint);
         g.setFont (uiFont (tokens::unit));
-        g.drawText (c.note + T (" · 点击试听", " · click to audition"),
-                    inner.removeFromTop (16), juce::Justification::centredLeft, false);
+        g.drawText (c.note + T (" · 实时试听", " · live audition"),
+                    inner.removeFromTop (compact ? 14 : 16), juce::Justification::centredLeft, false);
 
-        inner.removeFromTop (2);
-
-        for (const auto& row : c.rows)
+        if (! compact)
         {
-            if (inner.getHeight() < 18)
-                break;
+            inner.removeFromTop (2);
 
-            auto line = inner.removeFromTop (18);
+            for (const auto& row : c.rows)
+            {
+                if (inner.getHeight() < 18)
+                    break;
 
-            g.setColour (theme::textFaint);
-            g.setFont (uiFont (tokens::unit));
-            g.drawText (row.first, line.removeFromLeft (96), juce::Justification::centredLeft, false);
+                auto line = inner.removeFromTop (18);
 
-            g.setColour (theme::text);
-            g.setFont (monoFont (tokens::unit, true));
-            g.drawText (row.second, line, juce::Justification::centredRight, false);
+                g.setColour (theme::textFaint);
+                g.setFont (uiFont (tokens::unit));
+                g.drawText (row.first, line.removeFromLeft (96), juce::Justification::centredLeft, false);
+
+                g.setColour (theme::text);
+                g.setFont (monoFont (tokens::unit, true));
+                g.drawText (row.second, line, juce::Justification::centredRight, false);
+            }
         }
 
         const auto track = juce::Rectangle<float> ((float) area.getX() + 14.0f,
@@ -105,8 +109,8 @@ void DetailArea::paintSignal (juce::Graphics& g)
 
     // ---- verdict strip ------------------------------------------------------
     {
-        auto strip = area.removeFromTop (46);
-        area.removeFromTop (tokens::gap);
+        auto strip = area.removeFromTop (40);
+        area.removeFromTop (8);
 
         const float worst = d.worstRisk();
 
@@ -140,11 +144,8 @@ void DetailArea::paintSignal (juce::Graphics& g)
     }
 
     // ---- six cards, 3 x 2 ---------------------------------------------------
-    const int footerH = juce::jlimit (78, 108, area.getHeight() / 3);
-    auto grid = area;
-    auto attribution = grid.removeFromBottom (footerH);
-    grid.removeFromBottom (tokens::gap);
-
+    auto grid = signalGridBounds;
+    auto attribution = signalAttributionBounds;
     const int gap = tokens::gap;
     const int w = (grid.getWidth() - gap * 2) / 3;
     const int h = (grid.getHeight() - gap) / 2;
@@ -224,7 +225,56 @@ void DetailArea::paintSignal (juce::Graphics& g)
     paintCard (g, cell (1, 1), c4);
     paintCard (g, cell (2, 1), c5);
 
+    // ---- timestamped problem regions ---------------------------------------
+    {
+        auto row = signalProblemRowBounds;
+
+        if (! row.isEmpty())
+        {
+            auto label = row.removeFromLeft (juce::jmin (78, row.getWidth() / 5));
+
+            g.setColour (theme::textDim);
+            g.setFont (uiFont (tokens::unit, true));
+            g.drawText (T ("问题区域", "REGIONS"), label, juce::Justification::centredLeft, false);
+
+            if (state.signalProblems.empty())
+            {
+                g.setColour (theme::textFaint);
+                g.setFont (uiFont (tokens::unit));
+                g.drawText (T ("检出越线时自动生成时间戳；点击卡片实时跟随 DAW，点击时间戳循环该段",
+                               "Timestamped regions appear when a layer crosses its limit; click a card for live DAW solo, or a timestamp to loop that region"),
+                            row, juce::Justification::centredLeft, true);
+            }
+            else
+            {
+                for (int i = 0; i < 4 && i < (int) state.signalProblems.size(); ++i)
+                {
+                    const auto& p = state.signalProblems[(size_t) i];
+                    auto chip = signalChipBounds[(size_t) i];
+                    const auto colour = p.severity >= 2 ? theme::bad : theme::warn;
+
+                    g.setColour (theme::cardAlt);
+                    g.fillRoundedRectangle (chip.toFloat(), tokens::radiusControl);
+                    g.setColour (colour.withAlpha (0.55f));
+                    g.drawRoundedRectangle (chip.toFloat().reduced (0.5f), tokens::radiusControl, 1.0f);
+
+                    auto inner = chip.reduced (6, 0);
+
+                    g.setColour (colour);
+                    g.setFont (monoFont (tokens::unit, true));
+                    g.drawText (fmtTime (p.start), inner.removeFromLeft (44),
+                                juce::Justification::centredLeft, false);
+
+                    g.setColour (theme::textDim);
+                    g.setFont (uiFont (tokens::unit));
+                    g.drawText (p.label, inner, juce::Justification::centredLeft, false);
+                }
+            }
+        }
+    }
+
     // ---- attribution layer --------------------------------------------------
+    if (attribution.getHeight() >= 24)
     {
         g.setColour (theme::cardAlt);
         g.fillRoundedRectangle (attribution.toFloat(), tokens::radiusCard);
@@ -279,7 +329,7 @@ void DetailArea::paintSignal (juce::Graphics& g)
 
         for (int i = 0; i < juce::jmin (3, lines.size()); ++i)
             if (inner.getHeight() >= 18)
-                g.drawText ("· " + lines[i], inner.removeFromTop (18),
+                g.drawText (U8 ("· ") + lines[i], inner.removeFromTop (18),
                             juce::Justification::centredLeft, false);
     }
 }

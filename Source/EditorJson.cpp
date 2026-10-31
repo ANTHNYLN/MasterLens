@@ -2,6 +2,7 @@
 
 using ml::T;
 #include "Delivery.h"
+#include "GenreWar.h"
 #include "Version.h"
 
 //==============================================================================
@@ -32,6 +33,18 @@ juce::String MasterLensAudioProcessorEditor::buildReportJson() const
     loud->setProperty ("platformWorstCutDb", ml::platformSummary (stats).maxCutDb);
     loud->setProperty ("platformWastedLu", ml::platformSummary (stats).maxWastedDb);
     root->setProperty ("loudness", loud);
+
+    auto* targetPlan = new juce::DynamicObject();
+    const auto& genre = ml::presets::entries[juce::jlimit (0, ml::presets::customIndex - 1, targetGenreIndex)];
+    targetPlan->setProperty ("genreIndex", targetGenreIndex);
+    targetPlan->setProperty ("genreZh", juce::String::fromUTF8 (genre.zh));
+    targetPlan->setProperty ("genreEn", juce::String::fromUTF8 (genre.en));
+    targetPlan->setProperty ("warParticipationPct", targetWarPct);
+    targetPlan->setProperty ("targetLufs", ml::presets::war::warTargetLufs (targetGenreIndex, targetWarPct));
+    targetPlan->setProperty ("suggestedLra", ml::presets::war::warTargetLra (targetGenreIndex, targetWarPct));
+    targetPlan->setProperty ("ceilingDbtp", genre.ceiling);
+    targetPlan->setProperty ("tailSilenceMs", stats.tailSilenceMs);
+    root->setProperty ("genreTarget", targetPlan);
 
     auto* album = new juce::DynamicObject();
     const auto albumSnap = albumSnapshot;
@@ -109,6 +122,13 @@ juce::String MasterLensAudioProcessorEditor::buildReportJson() const
         o->setProperty ("serviceLimitingDb", res.limitedDb);
         o->setProperty ("wastedLoudnessDb", res.wastedLoudnessDb);
         o->setProperty ("normalises", p.normalises);
+        o->setProperty ("codec", T (p.codecZh, p.codecEn));
+        o->setProperty ("minTailSilenceMs", p.minTailSilenceMs);
+        o->setProperty ("tailSilenceMs", stats.tailSilenceMs);
+        o->setProperty ("tailOk", p.minTailSilenceMs <= 0
+                                  || (stats.tailSilenceMs > 0.0f
+                                      && stats.tailSilenceMs >= (float) p.minTailSilenceMs));
+        o->setProperty ("clipOk", stats.clipEvents == 0);
         o->setProperty ("state", res.state == ml::DeliveryState::over ? "over"
                              : res.state == ml::DeliveryState::warning ? "warning" : "ok");
         platformResults.add (juce::var (o));

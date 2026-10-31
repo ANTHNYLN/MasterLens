@@ -31,26 +31,36 @@ juce::Rectangle<int> MasterLensAudioProcessorEditor::baseBounds() const
 //==============================================================================
 float MasterLensAudioProcessorEditor::computeInitialUiScale() const
 {
+    const auto area = screenWorkArea (const_cast<MasterLensAudioProcessorEditor&> (*this));
+    const float availW = (float) area.getWidth() * 0.96f;
+    const float availH = (float) juce::jmax (320, area.getHeight() - 36) * 0.96f;
+
+    // The largest scale whose *minimum* layout still fits on this display.
+    float fitScale = ml::ui::minScale;
+
+    for (float step : ml::ui::scaleSteps)
+        if (880.0f * step <= availW && 560.0f * step <= availH)
+            fitScale = step;
+
     const auto stored = processor.apvts.state.getProperty ("uiScale");
 
     if (! stored.isVoid())
-        return juce::jlimit (ml::ui::minScale, ml::ui::maxScale, (float) stored);
+    {
+        // Older sessions may have saved 150 / 200 % on a laptop. Clamp the
+        // restored scale to what the current display can actually show instead
+        // of opening a window that cannot fit under the menu bar / Dock.
+        const float requested = juce::jlimit (ml::ui::minScale, ml::ui::maxScale, (float) stored);
+        const float fitted = juce::jmin (requested, fitScale);
 
-    // First launch: pick the largest step whose minimum layout still fits on the
-    // current display. A large monitor therefore opens at 200 %, a laptop at the
-    // biggest size that its screen can actually show.
-    const auto area = screenWorkArea (const_cast<MasterLensAudioProcessorEditor&> (*this));
-    const float availW = (float) area.getWidth() * 0.96f;
-    const float availH = (float) area.getHeight() * 0.96f;
+        if (std::abs (fitted - requested) > 0.001f)
+            processor.apvts.state.setProperty ("uiScale", fitted, nullptr);
 
-    float chosen = ml::ui::minScale;
+        return fitted;
+    }
 
-    for (float step : ml::ui::scaleSteps)
-        if (900.0f * step <= availW && 620.0f * step <= availH)
-            chosen = step;
-
-    processor.apvts.state.setProperty ("uiScale", chosen, nullptr);
-    return chosen;
+    // First launch: pick the largest step whose minimum layout still fits.
+    processor.apvts.state.setProperty ("uiScale", fitScale, nullptr);
+    return fitScale;
 }
 
 //==============================================================================
@@ -142,11 +152,26 @@ void MasterLensAudioProcessorEditor::setUiScale (float newScale, bool store)
 {
     newScale = juce::jlimit (ml::ui::minScale, ml::ui::maxScale, newScale);
 
+    if (store)
+    {
+        // Never let a zoom step open a window that cannot fit the current
+        // display's work area (MacBook Air default scaling is the common case).
+        const auto area = screenWorkArea (*this);
+        float fitScale = ml::ui::minScale;
+
+        for (float step : ml::ui::scaleSteps)
+            if (880.0f * step <= (float) area.getWidth() * 0.96f
+                && 560.0f * step <= (float) juce::jmax (320, area.getHeight() - 36) * 0.96f)
+                fitScale = step;
+
+        newScale = juce::jmin (newScale, fitScale);
+    }
+
     if (std::abs (newScale - uiScale) < 0.001f)
         return;
 
-    const int baseW = juce::jlimit (900, 1900, juce::roundToInt ((float) getWidth() / uiScale));
-    const int baseH = juce::jlimit (620, 1400, juce::roundToInt ((float) getHeight() / uiScale));
+    const int baseW = juce::jlimit (880, 1900, juce::roundToInt ((float) getWidth() / uiScale));
+    const int baseH = juce::jlimit (560, 1400, juce::roundToInt ((float) getHeight() / uiScale));
 
     uiScale = newScale;
     ml::ui::setScale (uiScale);
@@ -154,7 +179,7 @@ void MasterLensAudioProcessorEditor::setUiScale (float newScale, bool store)
     if (store)
         processor.apvts.state.setProperty ("uiScale", uiScale, nullptr);
 
-    setResizeLimits (ml::ui::scaled (900), ml::ui::scaled (620),
+    setResizeLimits (ml::ui::scaled (880), ml::ui::scaled (560),
                      ml::ui::scaled (1900), ml::ui::scaled (1400));
     setSize (ml::ui::scaled (baseW), ml::ui::scaled (baseH));
 

@@ -59,8 +59,14 @@ public:
         auditionEngine.start (startSeconds, endSeconds, lowHz, highHz, monoFold);
     }
 
+    void startLiveAudition (float lowHz, float highHz, bool monoFold)
+    {
+        auditionEngine.startLive (lowHz, highHz, monoFold);
+    }
+
     void stopAudition() { auditionEngine.stop(); }
     bool isAuditionActive() const noexcept { return auditionEngine.isActive(); }
+    bool isAuditionLive() const noexcept { return auditionEngine.isLive(); }
     float getAuditionLowHz() const noexcept { return auditionEngine.lowHz(); }
     float getAuditionHighHz() const noexcept { return auditionEngine.highHz(); }
     bool isAuditionMono() const noexcept { return auditionEngine.mono(); }

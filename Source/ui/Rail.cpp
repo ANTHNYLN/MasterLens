@@ -93,20 +93,23 @@ void ModuleRail::paint (juce::Graphics& g)
         }
 
         g.setColour (item.colour);
-        g.fillEllipse (16.0f, (float) row.getY() + 13.0f, 6.0f, 6.0f);
+        g.fillEllipse (16.0f, (float) row.getY() + (row.getHeight() < 34 ? 9.0f : 13.0f), 6.0f, 6.0f);
+
+        const bool compact = row.getHeight() < 34;
 
         g.setColour (sel ? theme::text : theme::textDim);
         g.setFont (uiFont (tokens::label, sel));
-        g.drawText (item.title, 28, row.getY() + 5, row.getWidth() - 110, 17,
-                    juce::Justification::centredLeft);
+        g.drawText (item.title, 28, row.getY() + (compact ? 3 : 5), row.getWidth() - 110,
+                    compact ? 14 : 17, juce::Justification::centredLeft);
 
         g.setColour (item.colour);
         g.setFont (uiFont (tokens::unit));
-        g.drawText (item.status, 28, row.getY() + 22, 90, 14, juce::Justification::centredLeft);
+        g.drawText (item.status, 28, row.getY() + (compact ? 16 : 22), 90, compact ? 12 : 14,
+                    juce::Justification::centredLeft);
 
         g.setColour (theme::textFaint);
         g.setFont (monoFont (tokens::unit));
-        g.drawText (item.value, row.getWidth() - 106, row.getY() + 8, 92, 14,
+        g.drawText (item.value, row.getWidth() - 106, row.getY() + (compact ? 7 : 8), 92, 14,
                     juce::Justification::centredRight);
     }
 }
@@ -123,7 +126,8 @@ static const char* moduleHintZh (int index)
         case 5: return "专辑中位快照、跨曲目偏离、风险聚合与可复现交付门禁";
         case 6: return "失真、混叠、超低堆积、瞬态、单声道折叠、中频掩蔽与联动归因";
         case 7: return "全部静态阈值检查清单，可逐条核对";
-        default: return "超限与谐振事件的时间位置；双击底部时间线可加标记";
+        case 8: return "超限与谐振事件的时间位置；双击底部时间线可加标记";
+        default: return "曲风标准响度 + 响度战争参与度滑块；各平台交付规范与尾部静音检查";
     }
 }
 
@@ -139,7 +143,8 @@ static const char* moduleHintEn (int index)
         case 5: return "Album median snapshot, cross-track deviations, risk aggregation and reproducible release gate";
         case 6: return "THD/IMD, aliasing, sub build-up, transients, mono fold, mid masking and attribution";
         case 7: return "Full checklist of every static threshold";
-        default: return "Over-limit and resonance positions; double-click the strip to add a marker";
+        case 8: return "Over-limit and resonance positions; double-click the strip to add a marker";
+        default: return "Genre reference loudness + loudness-war participation; platform delivery specs and tail-silence check";
     }
 }
 

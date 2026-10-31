@@ -2,6 +2,7 @@
 
 using ml::T;
 #include "Delivery.h"
+#include "GenreWar.h"
 #include "ui/StatusText.h"
 
 using ml::statusLabel;
@@ -167,6 +168,15 @@ void MasterLensAudioProcessorEditor::updateRail()
                     juce::String ((int) markers.size()) + T (" 标记", " markers"),
                     markers.empty() ? statusLabel (-1) : statusLabel (1),
                     markers.empty() ? statusColour (-1) : statusColour (1));
+
+    // 9 genre loudness target / platform delivery requirements
+    {
+        const auto target = ml::presets::war::warTargetLufs (targetGenreIndex, targetWarPct);
+        rail.setModule (9, T ("曲风目标 / 交付", "Genre target / delivery"),
+                        ml::num (target) + " LUFS",
+                        juce::String (juce::roundToInt (targetWarPct)) + T ("% 参与度", "% war"),
+                        ml::theme::accent);
+    }
 
     if (! live && albumSnapshot.tracks.empty())
     {

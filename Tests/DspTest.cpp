@@ -483,6 +483,80 @@ int main()
     }
 
     // ---------------------------------------------------------------------
+    // 9b) live audition follows the current input, not a history loop
+    // ---------------------------------------------------------------------
+    {
+        ml::AuditionEngine audition;
+        audition.prepare (sr, 2);
+
+        juce::AudioBuffer<float> buffer (2, 512);
+        juce::AudioBuffer<float> silence (2, 512);
+        silence.clear();
+
+        for (int n = 0; n < 512; ++n)
+        {
+            const float v = 0.25f * std::sin (2.0f * juce::MathConstants<float>::pi
+                                              * 440.0f * (float) n / (float) sr);
+            buffer.setSample (0, n, v);
+            buffer.setSample (1, n, v);
+        }
+
+        audition.startLive (200.0f, 2000.0f, false);
+        audition.process (buffer);
+
+        double liveEnergy = 0.0;
+
+        for (int n = 0; n < 512; ++n)
+            liveEnergy += (double) buffer.getSample (0, n) * buffer.getSample (0, n);
+
+        check ("live audition active", audition.isLive() ? 1.0 : 0.0, 1.0, 0.0);
+        check ("live audition follows input", liveEnergy > 1.0e-4 ? 1.0 : 0.0, 1.0, 0.0);
+
+        audition.process (silence);
+
+        double silenceEnergy = 0.0;
+
+        for (int n = 0; n < 512; ++n)
+            silenceEnergy += (double) silence.getSample (0, n) * silence.getSample (0, n);
+
+        check ("live audition stops with DAW", silenceEnergy < 1.0e-5 ? 1.0 : 0.0, 1.0, 0.0);
+        audition.stop();
+    }
+
+    // ---------------------------------------------------------------------
+    // 9c) trailing digital silence (Apple Music tail requirement input)
+    // ---------------------------------------------------------------------
+    {
+        ml::Stats stats;
+        ml::AnalysisEngine engine;
+        engine.prepare (sr, 2);
+        engine.reset();
+
+        juce::AudioBuffer<float> tone (2, 512);
+        juce::AudioBuffer<float> silence (2, 512);
+        silence.clear();
+
+        for (int b = 0; b < (int) (sr * 1.0 / 512.0); ++b)
+        {
+            for (int n = 0; n < 512; ++n)
+            {
+                const float v = (float) (0.1 * std::sin (2.0 * juce::MathConstants<double>::pi
+                                                         * 1000.0 * (double) (b * 512 + n) / sr));
+                tone.setSample (0, n, v);
+                tone.setSample (1, n, v);
+            }
+
+            engine.process (tone, stats, 512);
+        }
+
+        for (int b = 0; b < (int) (sr * 1.5 / 512.0); ++b)
+            engine.process (silence, stats, 512);
+
+        const auto s = ml::snapshot (stats);
+        check ("tail silence measured", s.tailSilenceMs, 1500.0, 120.0);
+    }
+
+    // ---------------------------------------------------------------------
     // 10) CPU benchmark (stereo, 48 kHz, 512-sample blocks)
     // ---------------------------------------------------------------------
     {

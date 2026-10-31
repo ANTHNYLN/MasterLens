@@ -109,9 +109,10 @@ void MetricGrid::paintCard (juce::Graphics& g, juce::Rectangle<int> area, const 
     g.drawText (unit, valueRow.withTrimmedLeft (valueWidth + 10).withTrimmedTop (12),
                 juce::Justification::centredLeft);
 
-    g.setFont (uiFont (tokens::aux));
+    g.setFont (uiFont (area.getHeight() < 100 ? tokens::unit : tokens::aux));
     g.setColour (theme::textFaint);
-    g.drawText (hint, area.getX() + 12, area.getY() + 80, area.getWidth() - 24, 18,
+    g.drawText (hint, area.getX() + 12, area.getY() + (area.getHeight() < 100 ? 72 : 80),
+                area.getWidth() - 24, area.getHeight() < 100 ? 14 : 18,
                 juce::Justification::centredLeft);
 }
 

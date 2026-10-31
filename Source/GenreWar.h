@@ -149,4 +149,37 @@ inline constexpr Note notes[]
 
 static_assert ((int) (sizeof (notes) / sizeof (notes[0])) == presets::count,
                "GenreWar::notes must have exactly one row per Presets::entries row");
+
+/** Loudness target for a style and a "loudness-war participation" percentage.
+
+    50 % is exactly the published genre reference (presets::entries::target);
+    0 % moves to the quietest observed release, 100 % to the loudest observed
+    release. Everything is static table data - no runtime learning.
+*/
+inline float warTargetLufs (int index, float percent) noexcept
+{
+    index = juce::jlimit (0, presets::customIndex - 1, index);
+    percent = juce::jlimit (0.0f, 100.0f, percent);
+
+    const auto& e = presets::entries[index];
+    const auto& n = notes[index];
+
+    if (e.kind == 2 || n.lufsHi <= n.lufsLo)
+        return e.target;
+
+    if (percent <= 50.0f)
+        return n.lufsLo + (e.target - n.lufsLo) * (percent / 50.0f);
+
+    return e.target + (n.lufsHi - e.target) * ((percent - 50.0f) / 50.0f);
+}
+
+/** Recommended LRA for the same participation: louder participation = less LRA. */
+inline float warTargetLra (int index, float percent) noexcept
+{
+    index = juce::jlimit (0, presets::customIndex - 1, index);
+    percent = juce::jlimit (0.0f, 100.0f, percent);
+
+    const auto& e = presets::entries[index];
+    return e.lraHi - (e.lraHi - e.lraLo) * (percent / 100.0f);
+}
 } // namespace ml::presets::war

@@ -60,7 +60,12 @@ private:
     void clearAlbum();
     void setAlbumRule (int index, bool enabled);
     void auditionSignal (int index);
+    void auditionSignalRegion (int index, double start, double end);
     void auditionRiskDetail (const juce::String& detail);
+    void setTargetGenre (int index);
+    void setTargetWar (float percent);
+    void applyTargetPlan();
+    void updateSignalProblems();
     ml::BasisContext currentBasis() const;
     std::vector<float> currentBandDevs() const;
     void resetAnalysis();
@@ -114,6 +119,8 @@ private:
     std::vector<float> curve;
     ml::StatsSnapshot stats;
     std::vector<ml::Marker> markers;
+    std::vector<ml::SignalProblem> signalProblems;
+    std::array<double, 6> lastSignalProblemTime { -100.0, -100.0, -100.0, -100.0, -100.0, -100.0 };
     std::vector<ml::TpEvent> tpEvents;
     std::vector<ml::Issue> issueCache;
     ml::SignalDefects signalDefects;
@@ -124,6 +131,8 @@ private:
     int lastAuditionIndex = -1;
 
     ml::BasisMode basisMode = ml::BasisMode::platform;
+    int targetGenreIndex = 16;
+    float targetWarPct = 50.0f;
     ml::AlbumSnapshot albumSnapshot;
     ml::album::GateResult albumGate;
     ml::album::Diff albumDiff;

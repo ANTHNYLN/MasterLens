@@ -46,6 +46,7 @@ struct Stats
     std::atomic<int>   clickEvents  { 0 };
     std::atomic<int>   oversCount   { 0 };
     std::atomic<double> elapsed     { 0.0 };
+    std::atomic<float> tailSilenceSeconds { 0.0f }; // trailing digital silence at -60 dBFS
     std::atomic<bool>  stereo       { false };
     std::atomic<bool>  hasSignal    { false };
 
@@ -139,6 +140,7 @@ struct StatsSnapshot
     int   clickEvents  = 0;
     int   oversCount   = 0;
     double elapsed     = 0.0;
+    float tailSilenceMs = 0.0f;
     bool  stereo       = false;
     bool  hasSignal    = false;
 
@@ -179,6 +181,7 @@ inline StatsSnapshot snapshot (const Stats& s) noexcept
     r.clickEvents  = s.clickEvents.load();
     r.oversCount   = s.oversCount.load();
     r.elapsed      = s.elapsed.load();
+    r.tailSilenceMs = s.tailSilenceSeconds.load() * 1000.0f;
     r.stereo       = s.stereo.load();
     r.hasSignal    = s.hasSignal.load();
     r.psr = s.psr.load();
@@ -209,6 +212,7 @@ inline void resetStats (Stats& s) noexcept
     s.correlation = 0.0f;      s.widthPct = 0.0f;        s.lowSidePct = 0.0f;
     s.dcOffsetDb = kSilentDb;  s.clipEvents = 0;         s.clickEvents = 0;
     s.oversCount = 0;          s.elapsed = 0.0;          s.hasSignal = false;
+    s.tailSilenceSeconds = 0.0f;
     s.psr = kSilentDb;         s.psrMin = kSilentDb;     s.psrMinTime = 0.0;
     s.truePeakMaxTime = 0.0f;  s.spikeCount = 0;         s.lastSpikeTime = 0.0;
     s.bandCorrLow = 0.0f;      s.bandCorrMid = 0.0f;     s.bandCorrHigh = 0.0f;

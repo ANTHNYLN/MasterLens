@@ -8,17 +8,17 @@ using ml::T;
 namespace
 {
     /** Keeps the very first window inside the current display, while never
-        going below the supported 900 x 620 base layout. */
+        going below the supported 880 x 560 base layout. */
     juce::Point<int> fittedBaseSize (float scale, int width, int height)
     {
         if (auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
         {
             const auto area = d->userBounds.toNearestInt();
-            const int maxW = juce::jmax (900, (int) std::floor ((float) area.getWidth() * 0.96f / scale));
-            const int maxH = juce::jmax (620, (int) std::floor ((float) area.getHeight() * 0.96f / scale));
+            const int maxW = juce::jmax (880, (int) std::floor ((float) area.getWidth() * 0.96f / scale));
+            const int maxH = juce::jmax (560, (int) std::floor ((float) juce::jmax (320, area.getHeight() - 36) * 0.96f / scale));
 
-            width = juce::jlimit (900, maxW, width);
-            height = juce::jlimit (620, maxH, height);
+            width = juce::jlimit (880, maxW, width);
+            height = juce::jlimit (560, maxH, height);
         }
 
         return { width, height };
@@ -59,7 +59,11 @@ MasterLensAudioProcessorEditor::MasterLensAudioProcessorEditor (MasterLensAudioP
     detail.onAlbumClear      = [this] { clearAlbum(); };
     detail.onAlbumRuleChanged= [this] (int i, bool on) { setAlbumRule (i, on); };
     detail.onAuditionSignal  = [this] (int i) { auditionSignal (i); };
+    detail.onAuditionSignalRegion = [this] (int i, double s, double e) { auditionSignalRegion (i, s, e); };
     detail.onAuditionRiskDetail = [this] (const juce::String& d) { auditionRiskDetail (d); };
+    detail.onTargetGenreChanged = [this] (int index) { setTargetGenre (index); };
+    detail.onTargetWarChanged = [this] (float pct) { setTargetWar (pct); };
+    detail.onApplyTargetPlan = [this] { applyTargetPlan(); };
     timeline.onDoubleClick   = [this] (double t) { addManualMarker (t); };
 
     buildControls();
@@ -96,15 +100,19 @@ MasterLensAudioProcessorEditor::MasterLensAudioProcessorEditor (MasterLensAudioP
     ml::Localisation::set (storedLanguage == 1 ? ml::Language::english : ml::Language::chinese);
     basisMode = (ml::BasisMode) juce::jlimit (0, 3,
         (int) processor.apvts.state.getProperty ("basisMode", 0));
+    targetGenreIndex = juce::jlimit (0, ml::presets::customIndex - 1,
+        (int) processor.apvts.state.getProperty ("targetGenre", 16));
+    targetWarPct = juce::jlimit (0.0f, 100.0f,
+        (float) processor.apvts.state.getProperty ("targetWarPct", 50.0));
 
-    const int storedW = (int) processor.apvts.state.getProperty ("editorWidth", 1180);
-    const int storedH = (int) processor.apvts.state.getProperty ("editorHeight", 760);
+    const int storedW = (int) processor.apvts.state.getProperty ("editorWidth", 1120);
+    const int storedH = (int) processor.apvts.state.getProperty ("editorHeight", 700);
     const auto start = fittedBaseSize (uiScale,
-                                       juce::jlimit (900, 1900, storedW),
-                                       juce::jlimit (620, 1400, storedH));
+                                       juce::jlimit (880, 1900, storedW),
+                                       juce::jlimit (560, 1400, storedH));
 
     setResizable (true, true);
-    setResizeLimits (ml::ui::scaled (900), ml::ui::scaled (620),
+    setResizeLimits (ml::ui::scaled (880), ml::ui::scaled (560),
                      ml::ui::scaled (1900), ml::ui::scaled (1400));
     setSize (ml::ui::scaled (start.x), ml::ui::scaled (start.y));
 

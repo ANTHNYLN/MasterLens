@@ -2,6 +2,7 @@
 
 using ml::T;
 #include "Delivery.h"
+#include "GenreWar.h"
 #include "Version.h"
 
 //==============================================================================
@@ -65,6 +66,29 @@ juce::String MasterLensAudioProcessorEditor::buildReport() const
           << T ("被丢弃响度 ", "wasted loudness ") << ml::fmt1 (res.wastedLoudnessDb) << " LU, "
           << (res.state == ml::DeliveryState::over ? T ("超限", "OVER")
             : res.state == ml::DeliveryState::warning ? T ("临界", "WARNING") : T ("可行", "OK")) << "\n";
+    }
+
+    r << "\n" << T ("【曲风响度目标 / 交付要求】\n", "[Genre loudness target / delivery requirements]\n");
+    {
+        const int gi = juce::jlimit (0, ml::presets::customIndex - 1, targetGenreIndex);
+        const auto& g = ml::presets::entries[gi];
+        r << T ("  曲风：", "  Genre: ") << T (g.zh, g.en)
+          << T ("  参与度 ", "  participation ") << juce::String (juce::roundToInt (targetWarPct)) << "%\n";
+        r << T ("  目标 / LRA / TP：", "  Target / LRA / TP: ")
+          << ml::fmt1 (ml::presets::war::warTargetLufs (gi, targetWarPct)) << " LUFS / "
+          << ml::fmt1 (ml::presets::war::warTargetLra (gi, targetWarPct)) << " LU / "
+          << ml::fmt1 (g.ceiling) << " dBTP\n";
+        r << T ("  尾部数字静音：", "  Tail digital silence: ") << ml::fmt1 (s.tailSilenceMs / 1000.0f) << " s\n";
+
+        for (int i = 0; i < ml::numPlatforms; ++i)
+        {
+            const auto& p = ml::platform (i);
+            r << "    " << T (p.nameZh, p.nameEn) << " : " << ml::num (p.targetLufs) << " LUFS / "
+              << ml::num (p.tpCeiling) << " dBTP / " << T (p.codecZh, p.codecEn);
+            if (p.minTailSilenceMs > 0)
+                r << T (" / 曲尾至少 ", " / tail >= ") << p.minTailSilenceMs << " ms";
+            r << "\n";
+        }
     }
 
     r << "\n" << T ("【信号完整性】\n", "[Signal integrity]\n");

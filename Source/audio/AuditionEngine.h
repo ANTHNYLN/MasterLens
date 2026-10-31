@@ -7,21 +7,38 @@
 
 namespace ml
 {
-/** Problem audition: loops a short slice of the recent input, band-limits it and
-    matches its loudness to the full-band slice. Bypassed (bit-transparent) unless
-    the user explicitly starts an audition.
+/** Problem audition.
+
+    Two monitoring modes are supported:
+
+      - Live: the current input is band-limited and follows the host playhead.
+        Nothing is read back from history, so DAW scrubbing / stop is mirrored
+        exactly. This is the default for the signal-health cards.
+      - Loop: a short slice from the recent 12 s history is looped. This is used
+        by timestamped problem regions and album risk rows.
+
+    Bypassed (bit-transparent) unless the user explicitly starts an audition.
 */
 class AuditionEngine
 {
 public:
+    enum class Mode { off = 0, live = 1, loop = 2 };
+
     void prepare (double sampleRate, int numChannels);
     void reset();
 
-    /** Message-thread request. Times are seconds relative to the measurement. */
+    /** Message-thread request: loop a slice from the recent history. */
     void start (double startSeconds, double endSeconds, float lowHz, float highHz, bool monoFold);
+
+    /** Message-thread request: filter the live input and follow the host. */
+    void startLive (float lowHz, float highHz, bool monoFold);
+
     void stop();
 
     bool isActive() const noexcept { return active.load (std::memory_order_acquire); }
+    bool isLive() const noexcept { return mode.load (std::memory_order_acquire) == (int) Mode::live; }
+    bool isLoop() const noexcept { return mode.load (std::memory_order_acquire) == (int) Mode::loop; }
+    Mode getMode() const noexcept { return (Mode) mode.load (std::memory_order_acquire); }
     float lowHz() const noexcept { return requestedLo.load (std::memory_order_relaxed); }
     float highHz() const noexcept { return requestedHi.load (std::memory_order_relaxed); }
     bool mono() const noexcept { return requestedMono.load (std::memory_order_relaxed); }
@@ -56,11 +73,13 @@ private:
 
     std::atomic<bool> pendingStart { false };
     std::atomic<bool> active { false };
+    std::atomic<int> mode { (int) Mode::off };
     std::atomic<double> requestedStart { 0.0 }, requestedEnd { 0.0 };
     std::atomic<float> requestedLo { 20.0f }, requestedHi { 20000.0f };
     std::atomic<bool> requestedMono { false };
 
     int loopStart = 0, loopLength = 0, loopPos = 0;
+    int liveFade = 0;
     float gain = 1.0f;
     int fadeSamples = 1;
 
