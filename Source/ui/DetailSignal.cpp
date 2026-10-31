@@ -64,7 +64,8 @@ namespace
 
         g.setColour (theme::textFaint);
         g.setFont (uiFont (tokens::unit));
-        g.drawText (c.note, inner.removeFromTop (16), juce::Justification::centredLeft, false);
+        g.drawText (c.note + T (" · 点击试听", " · click to audition"),
+                    inner.removeFromTop (16), juce::Justification::centredLeft, false);
 
         inner.removeFromTop (2);
 

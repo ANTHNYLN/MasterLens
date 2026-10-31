@@ -4,6 +4,7 @@
 
 #include "dsp/AnalysisEngine.h"
 #include "dsp/SpectrumAnalyzer.h"
+#include "audio/AuditionEngine.h"
 
 class MasterLensAudioProcessor : public juce::AudioProcessor
 {
@@ -39,6 +40,7 @@ public:
     ml::Stats stats;
     ml::AnalysisEngine engine;
     ml::SpectrumRing spectrumRing;
+    ml::AuditionEngine auditionEngine;
 
     ml::StatsSnapshot getStatsSnapshot() const { return ml::snapshot (stats); }
     void requestReset() { resetRequested.store (true); }
@@ -51,6 +53,35 @@ public:
     float getCeilingDb() const;
     float getSmoothing() const;
     double getSampleRateValue() const noexcept { return currentSampleRate; }
+
+    void startAudition (double startSeconds, double endSeconds, float lowHz, float highHz, bool monoFold)
+    {
+        auditionEngine.start (startSeconds, endSeconds, lowHz, highHz, monoFold);
+    }
+
+    void stopAudition() { auditionEngine.stop(); }
+    bool isAuditionActive() const noexcept { return auditionEngine.isActive(); }
+    float getAuditionLowHz() const noexcept { return auditionEngine.lowHz(); }
+    float getAuditionHighHz() const noexcept { return auditionEngine.highHz(); }
+    bool isAuditionMono() const noexcept { return auditionEngine.mono(); }
+
+    int consumePendingUiCommand() { return pendingUiCommand.exchange (0); }
+    bool autoResetOnStart() const { return getBool ("autoResetOnStart"); }
+    bool autoScanOnStop() const { return getBool ("autoScanOnStop"); }
+    bool autoReportOnStop() const { return getBool ("autoReportOnStop"); }
+
+private:
+    bool getBool (const char* id) const
+    {
+        if (auto* p = apvts.getRawParameterValue (id))
+            return p->load() > 0.5f;
+
+        return false;
+    }
+
+    std::atomic<int> pendingUiCommand { 0 };
+    int lastTransportPlaying = -1;
+    int lastCommandValue = 0;
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();

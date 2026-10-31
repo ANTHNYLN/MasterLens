@@ -8,6 +8,8 @@
 #include "../dsp/AnalysisEngine.h"
 #include "../dsp/DefectAnalyzer.h"
 #include "../dsp/SpectrumAnalyzer.h"
+#include "../Basis.h"
+#include "../album/AlbumSession.h"
 #include "Advisor.h"
 #include "Theme.h"
 #include "Widgets.h"
@@ -40,11 +42,18 @@ struct UiState
 {
     StatsSnapshot stats;
     std::vector<float> bandDevs;
+    std::array<float, 10> bandDb {};
     std::array<float, 4> ratios { 0.0f, 0.0f, 0.0f, 0.0f };
     std::vector<SpectrumAnalyzer::Resonance> resonances;
     std::vector<TpEvent> tpEvents;
     std::vector<Marker> markers;
     SignalDefects defects;
+    BasisContext basis;
+    AlbumSnapshot album;
+    album::GateResult albumGate;
+    album::Diff albumDiff;
+    PlatformSummary platform;
+    bool hasTonalBasis = false;
     StatsSnapshot referenceStats;
     bool hasReferenceStats = false;
     float target = -14.0f;
@@ -58,8 +67,8 @@ struct UiState
     bool snapshotValid[2] { false, false };
 };
 
-enum class PageId { loudness = 0, truePeak, spectrum, stereo, delivery, signal, diagnostics, timeline };
-constexpr int numPages = 8;
+enum class PageId { loudness = 0, truePeak, spectrum, stereo, delivery, album, signal, diagnostics, timeline };
+constexpr int numPages = 9;
 
 //==============================================================================
 /** Left hand module list: verdict header + one 40 px row per module. */
@@ -146,14 +155,29 @@ public:
     std::function<void()> onExportReport;
     std::function<void()> onAddMarkerNow;
     std::function<void (double)> onAddMarkerAt;
+    std::function<void()> onExportMarkers;
+    std::function<void()> onImportMarkers;
+    std::function<void()> onAlbumCapture;
+    std::function<void()> onAlbumExportProof;
+    std::function<void()> onAlbumImport;
+    std::function<void()> onAlbumClear;
+    std::function<void (int, bool)> onAlbumRuleChanged;
+    std::function<void (int)> onAuditionSignal;
+    std::function<void (const juce::String&)> onAuditionRiskDetail;
 
     juce::TextButton& getImportButton() noexcept { return refImport; }
     juce::TextButton& getClearButton() noexcept { return refClear; }
     juce::TextButton& getExportButton() noexcept { return reportButton; }
     juce::TextButton& getMarkButton() noexcept { return markButton; }
 
+    juce::String getAlbumTrackLabel() const { return albumTrackName.getText().trim(); }
+    void setAlbumTrackLabel (const juce::String& label) { albumTrackName.setText (label, false); }
+    juce::String getAlbumName() const { return albumNameEditor.getText().trim(); }
+    void setAlbumName (const juce::String& name) { albumNameEditor.setText (name, false); }
+
     void paint (juce::Graphics&) override;
     void resized() override;
+    void mouseDown (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
 
 private:
@@ -167,6 +191,7 @@ private:
     void paintSpectrumExtras (juce::Graphics&);
     void paintStereoExtras (juce::Graphics&);
     void paintDelivery (juce::Graphics&);
+    void paintAlbum (juce::Graphics&);
     void paintSignal (juce::Graphics&);
     void paintDiagnostics (juce::Graphics&);
     void paintTimeline (juce::Graphics&);
@@ -188,5 +213,10 @@ private:
     IssueList issues;
 
     juce::TextButton refImport, refClear, reportButton, markButton;
+    juce::TextButton markerExport, markerImport;
+    juce::TextButton albumCapture, albumProof, albumImport, albumClearButton;
+    juce::TextButton albumExportMarkers, albumImportMarkers;
+    std::array<juce::TextButton, 5> albumRuleButtons;
+    juce::TextEditor albumTrackName, albumNameEditor;
 };
 } // namespace ml

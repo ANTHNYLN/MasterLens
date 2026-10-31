@@ -1,7 +1,6 @@
 #include "PluginEditor.h"
 
 using ml::T;
-#include "Presets.h"
 #include "Version.h"
 
 //==============================================================================
@@ -17,11 +16,29 @@ void MasterLensAudioProcessorEditor::updateTexts()
     languageButton.setButtonText (en ? juce::String::fromUTF8 ("中文") : juce::String ("EN"));
     exportButton.setButtonText (T ("导出报告", "Export"));
 
-    targetCaption.setText (T ("目标响度 LUFS", "Target LUFS"), juce::dontSendNotification);
+    targetCaption.setText (basisMode == ml::BasisMode::manual
+                               ? T ("手动参考 LUFS", "Manual reference LUFS")
+                               : T ("参考响度（不设固定目标）", "Reference level (no fixed target)"),
+                           juce::dontSendNotification);
     ceilingCaption.setText (T ("真峰值上限 dBTP", "Ceiling dBTP"), juce::dontSendNotification);
 
-    presetBox.setTooltip (T ("平台预设：同时设置目标响度与真峰值上限",
-                             "Presets set both the loudness target and the true-peak ceiling"));
+    targetSlider.setEnabled (basisMode == ml::BasisMode::manual);
+
+    updatingPreset = true;
+    presetBox.clear (juce::dontSendNotification);
+    presetBox.addItem (T ("平台归一化后果", "Platform normalisation"), 1);
+    presetBox.addItem (T ("参考轨基准", "Reference tracks"), 2);
+    presetBox.addItem (T ("专辑中位基准", "Album median"), 3);
+    presetBox.addItem (T ("手动参考值", "Manual reference"), 4);
+    presetBox.setSelectedId ((int) basisMode + 1, juce::dontSendNotification);
+    updatingPreset = false;
+
+    presetBox.setTooltip (T ("主基准：平台归一化后果 / 参考轨 / 专辑中位 / 手动参考。"
+                             "固定曲风响度不再作为合格线。",
+                             "Primary basis: platform consequence / reference tracks / album median / "
+                             "manual. Fixed genre loudness is no longer a pass line."));
+
+    infoButton.setVisible (false);
 
     holdButton.setTooltip (T ("保持 (Hold)：锁定当前读数，便于对比改动前后；再次点击恢复实时（按住 Space）",
                               "Hold: freezes the current readings for before / after comparison; "
@@ -43,52 +60,6 @@ void MasterLensAudioProcessorEditor::updateTexts()
                                   "(Cmd + / Cmd -)"));
     exportButton.setTooltip (T ("导出 TXT / JSON / CSV 检查报告（⌘E）",
                                 "Export TXT / JSON / CSV QC report (Cmd+E)"));
-
-    const int selected = juce::jlimit (0, ml::presets::customIndex, presetBox.getSelectedId() - 1);
-    updatingPreset = true;
-    presetBox.clear (juce::dontSendNotification);
-
-    int lastKind = -1;
-
-    for (int i = 0; i < ml::presets::count; ++i)
-    {
-        const auto& e = ml::presets::entries[i];
-
-        if (e.kind != lastKind)
-        {
-            if (e.kind == 1)
-                presetBox.addSectionHeading (T ("曲风参考", "Genre reference"));
-            else if (e.kind == 2)
-                presetBox.addSectionHeading (T ("手动设定", "Manual"));
-
-            lastKind = e.kind;
-        }
-
-        presetBox.addItem (ml::U8 (en ? e.en : e.zh), i + 1);
-    }
-
-    presetBox.setSelectedId (selected + 1, juce::dontSendNotification);
-    updatingPreset = false;
-
-    // Guidance for the current choice: the LRA window this target normally implies.
-    if (juce::isPositiveAndBelow (selected, ml::presets::customIndex))
-    {
-        const auto& e = ml::presets::entries[selected];
-
-        juce::String tip (ml::U8 (en ? e.en : e.zh));
-        tip << "  |  " << juce::String (e.target, 1) << " LUFS"
-            << "  |  TP " << juce::String (e.ceiling, 1) << " dBTP";
-
-        if (e.lraHi > 0.0f)
-            tip << "  |  LRA " << juce::String (e.lraLo, 0) << "-" << juce::String (e.lraHi, 0) << " LU";
-
-        presetBox.setTooltip (tip);
-    }
-    else
-    {
-        presetBox.setTooltip (T ("自定义目标：手动拖动目标响度与真峰值上限",
-                                "Custom target: set loudness and true-peak ceiling by hand"));
-    }
 }
 
 //==============================================================================
@@ -97,6 +68,16 @@ bool MasterLensAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
     if (auto* focused = juce::Component::getCurrentlyFocusedComponent())
         if (dynamic_cast<juce::TextEditor*> (focused) != nullptr)
             return false;
+
+    if (key == juce::KeyPress::escapeKey && processor.isAuditionActive())
+    {
+        processor.stopAudition();
+        lastAuditionIndex = -1;
+        footerStatusText = T ("试听已停止", "Audition stopped");
+        footerStatusColour = ml::theme::textDim;
+        repaint();
+        return true;
+    }
 
     if (key == juce::KeyPress::spaceKey)
     {

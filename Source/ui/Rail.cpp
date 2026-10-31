@@ -12,7 +12,8 @@ ModuleRail::ModuleRail()
 juce::Rectangle<int> ModuleRail::rowBounds (int index) const
 {
     const int top = 76;
-    return { 0, top + index * tokens::rowHeight, getWidth(), tokens::rowHeight };
+    const int rowH = juce::jlimit (26, 40, (getHeight() - top - 12) / juce::jmax (1, numPages));
+    return { 0, top + index * rowH, getWidth(), rowH };
 }
 
 void ModuleRail::setModule (int index, juce::String title, juce::String value,
@@ -119,8 +120,9 @@ static const char* moduleHintZh (int index)
         case 2: return "10 段能量相对粉噪 / 参考谱的偏差";
         case 3: return "相关性、宽度与三段分频侧向能量";
         case 4: return "8 个平台归一化后的实际后果：增益、预测峰值与服务限幅";
-        case 5: return "失真、混叠、超低堆积、瞬态、单声道折叠、中频掩蔽与联动归因";
-        case 6: return "全部静态阈值检查清单，可逐条核对";
+        case 5: return "专辑中位快照、跨曲目偏离、风险聚合与可复现交付门禁";
+        case 6: return "失真、混叠、超低堆积、瞬态、单声道折叠、中频掩蔽与联动归因";
+        case 7: return "全部静态阈值检查清单，可逐条核对";
         default: return "超限与谐振事件的时间位置；双击底部时间线可加标记";
     }
 }
@@ -134,8 +136,9 @@ static const char* moduleHintEn (int index)
         case 2: return "10 band energy deviation against pink noise / reference";
         case 3: return "Correlation, width and three-band side energy";
         case 4: return "Normalisation consequences for eight platforms: gain, predicted peak, service limiting";
-        case 5: return "THD/IMD, aliasing, sub build-up, transients, mono fold, mid masking and attribution";
-        case 6: return "Full checklist of every static threshold";
+        case 5: return "Album median snapshot, cross-track deviations, risk aggregation and reproducible release gate";
+        case 6: return "THD/IMD, aliasing, sub build-up, transients, mono fold, mid masking and attribution";
+        case 7: return "Full checklist of every static threshold";
         default: return "Over-limit and resonance positions; double-click the strip to add a marker";
     }
 }

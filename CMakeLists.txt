@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(MasterLens VERSION 1.4.3 LANGUAGES C CXX)
+project(MasterLens VERSION 1.5.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -14,9 +14,9 @@ endif()
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/.tools/JUCE ${CMAKE_BINARY_DIR}/JUCE EXCLUDE_FROM_ALL)
 
 juce_add_plugin(MasterLens
-    VERSION 1.4.3
+    VERSION 1.5.0
     COMPANY_NAME "BerryStudio"
-    BUNDLE_ID "com.orchaudio.masterlens"
+    BUNDLE_ID "com.berrystudio.masterlens"
     PLUGIN_MANUFACTURER_CODE OrcA
     PLUGIN_CODE Maln
     FORMATS AU VST3 Standalone
@@ -37,6 +37,8 @@ juce_add_plugin(MasterLens
 set(MASTERLENS_SOURCES
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
+    Source/album/AlbumSession.cpp
+    Source/audio/AuditionEngine.cpp
     Source/EditorControls.cpp
     Source/EditorPaint.cpp
     Source/EditorLayout.cpp
@@ -44,6 +46,7 @@ set(MASTERLENS_SOURCES
     Source/EditorRail.cpp
     Source/EditorTexts.cpp
     Source/EditorPresets.cpp
+    Source/EditorMarkers.cpp
     Source/EditorReportTxt.cpp
     Source/EditorJson.cpp
     Source/EditorCsv.cpp
@@ -68,6 +71,7 @@ set(MASTERLENS_SOURCES
     Source/ui/DetailPages.cpp
     Source/ui/DetailPeak.cpp
     Source/ui/DetailMix.cpp
+    Source/ui/DetailAlbum.cpp
     Source/ui/DetailSignal.cpp
     Source/ui/DetailDiag.cpp
     Source/ui/DetailTime.cpp
@@ -91,6 +95,7 @@ target_link_libraries(MasterLens
         juce::juce_audio_utils
         juce::juce_dsp
         juce::juce_gui_extra
+        juce::juce_cryptography
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
@@ -109,6 +114,7 @@ target_sources(MasterLensDspTest PRIVATE
     Source/dsp/AnalysisEngine.cpp
     Source/dsp/SpectrumAnalyzer.cpp
     Source/dsp/DefectAnalyzer.cpp
+    Source/audio/AuditionEngine.cpp
 )
 
 target_include_directories(MasterLensDspTest PRIVATE Source)
@@ -149,6 +155,7 @@ target_link_libraries(MasterLensUiShot
         juce::juce_audio_utils
         juce::juce_dsp
         juce::juce_gui_extra
+        juce::juce_cryptography
     PUBLIC
         juce::juce_recommended_config_flags
 )

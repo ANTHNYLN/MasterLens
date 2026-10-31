@@ -6,11 +6,13 @@
 by **BerryStudio** · developer **KNGTNPT**<br>
 macOS / Windows 音频总线插件（VST3 / AU / 独立版），C++17 + JUCE 8。
 
-*Bilingual mastering loudness meter, platform-normalisation simulator and signal-integrity inspector for macOS and Windows — VST3, AU and standalone, built with C++17 and JUCE 8. Zero latency, zero colouring: it only measures.*
+*Bilingual mastering loudness meter, platform-normalisation simulator and signal-integrity inspector for macOS and Windows — VST3, AU and standalone, built with C++17 and JUCE 8. Zero latency, bit-transparent bypass; only an explicit risk audition changes the output.*
 
 ![MasterLens 界面](docs/screenshot.png)
 
-插件**不处理任何音频**（零延迟、零染色），只做测量、归一化后果模拟与信号缺陷诊断，插在总线 / 母带链最后一级即可。
+![专辑统一与交付门禁](docs/album-1.5.png)
+
+插件默认**不处理任何音频**（零延迟、逐位旁路），只做测量、归一化后果模拟与信号缺陷诊断；只有点击问题试听时才会临时输出所选片段 / 频段。插在总线 / 母带链最后一级即可。
 
 ---
 
@@ -19,14 +21,35 @@ macOS / Windows 音频总线插件（VST3 / AU / 独立版），C++17 + JUCE 8�
 - **Loudness (ITU-R BS.1770-4 / EBU R128)**: integrated with absolute + relative gating, momentary, short-term, LRA (EBU Tech 3342), PLR, and 4× oversampled true peak.
 - **Platform normalisation**: eight destinations modelled as they behave — gain applied, predicted true peak before and after the service limiter, how much peak reduction the service has to perform, and how much of your limiting is thrown away. Compare every result with imported reference tracks (LUFS, LRA, PLR, low-side, sub share).
 - **Signal integrity**: harmonic / intermodulation energy over a local spectral floor, flat-top (hard-clip) density, aliasing risk with top-octave flatness, sub-bass build-up, transient preservation, true mono-fold loss and mid-masking risk — plus a correlation layer that merges simultaneous anomalies into one attribution.
-- **Mix diagnostics**: sample clipping, inter-sample overs, click/edit points, DC offset (4 s true mean), channel correlation, stereo width, mono-ness below 120 Hz, and a 10-band tonal balance referenced to pink-noise-per-octave energy — reported as concrete problems (mud, harshness, sibilance, missing air, sub excess, low-mid hole, bright/dark tilt, spectral holes) with bilingual explanations and fixes.
-- **Visuals**: 8192-point FFT with 20 fps spectrum analysis (30 fps UI/meters) and fractional-octave smoothing (1/3 octave below 250 Hz), power-domain averaging, peak-preserving tone restoration and cubic curve drawing; 3-minute short-term loudness history; correlation / width / low-end meters.
+- **Mix diagnostics**: sample clipping, inter-sample overs, click/edit points, DC offset (4 s true mean), channel correlation, stereo width, mono-ness below 120 Hz, and a 10-band tonal balance that is **only compared with a reference track or album median** — never a built-in absolute curve — reported as concrete problems (mud, harshness, sibilance, missing air, sub excess, low-mid hole, bright/dark tilt, spectral holes) with bilingual explanations and fixes.
+- **Visuals**: 8192-point FFT with **60 fps** spectrum analysis on the spectrum page (other pages stay at a low-load rate) and fractional-octave smoothing (1/3 octave below 250 Hz), power-domain averaging, peak-preserving tone restoration and cubic curve drawing; 3-minute short-term loudness history; correlation / width / low-end meters.
 - **UI**: dark professional theme (light included), 100 / 125 / 150 / 175 / 200 % interface zoom that scales type, rows and the window together, bilingual Chinese/English (stored in plug-in state), keyboard shortcuts, A/B snapshot compare, exportable TXT / JSON / CSV report.
-- **Targets**: 36 static delivery references — 8 platform/broadcast specs (Spotify, Apple Music, YouTube, Tidal, podcast, audiobook, EBU R128) plus 28 genre references (club/EDM, hip-hop, rock, metal, pop, folk, jazz, classical, film score…), each carrying target LUFS, dBTP ceiling and a recommended LRA window. Picking one sets both target parameters; "Custom" leaves them manual.
-- **Verified**: `auval` passes, 42 offline DSP assertions pass (incl. −23.00 LUFS R128 calibration, mono-fold loss, sub-share, flat-top and defect-detector checks), ~0.4 % of one core at 48 kHz stereo. The 1.4.3 UI benchmark measures ~1.2 % (loudness page) / ~1.7 % (spectrum page) of one core instead of ~6.5 %.
+- **Basis, not genre targets**: choose platform-normalisation consequence, reference tracks, album median or a manual reference. The platform view shows the attenuation, service limiting and wasted loudness; reference / album views show LUFS, LRA, PLR and spectral deltas. Fixed genre loudness is no longer a pass line.
+- **Album session / release gate**: capture tracks into a shared, versioned album snapshot; compare LUFS / LRA / PLR / TP / spectral deviation against the album median; rank platform, codec, signal, mono and inconsistency risks; toggle custom blocking rules; export a reproducible JSON + TXT proof with snapshot and evidence hashes and a previous-revision diff.
+- **Risk audition and marker exchange**: click a signal card or album risk to loop the recent slice, band-limit it and loudness-match it (Esc stops); export / import marker CSV for DAW marker tables. Host automation exposes reset / capture / proof / marker commands.
+- **Verified**: `auval` passes, **46** offline DSP assertions pass (incl. −23.00 LUFS R128 calibration, mono-fold, sub-share, flat-top, defect-detector and audition bypass checks), ~0.31 % of one core at 48 kHz stereo. 1.5 UI benchmark: ~2.7 % loudness page, ~3.7 % spectrum page (60 fps), ~1.4 % album page.
 - **Install**: open the DMG, run `安装 Install.command`, restart the DAW, insert on the master bus.
 
 Build: `./scripts/make_dmg.sh` (universal binary, ad-hoc signed).
+
+---
+
+## 1.5.0 更新
+
+- **判定基准重构（本版核心）**：固定曲风响度目标不再是合格线。顶部改为四种主基准：**平台归一化后果 / 参考轨 / 专辑中位 / 手动参考**。
+  - 平台模式直接显示归一化后的衰减、服务端限幅、被丢弃响度。−4 LUFS 这类超高响度会明确说明“归一化后感知响度不变，损失的是动态余量”。
+  - 参考轨 / 专辑中位模式显示 LUFS、LRA、PLR 与基线的差，只作差异提示，不自动判不合格。
+  - 频谱平衡只对照参考轨 / 专辑中位；没有参考时明确显示“无基准”，不再套用粉噪目标曲线。
+- **频谱 60 fps**：频谱页改为 60 Hz 分析与重绘（8192 FFT、分数倍频程平滑、峰值保持）；其他页面保持 30 Hz 更新，HOLD 时停止 FFT。离屏基准约 3.7% 单核。
+- **专辑统一化检查（新增专辑页）**：逐首「采集本曲」写入共享、带修订号的专辑快照；并列 LUFS / LRA / PLR / TP / Δ中位 / 状态；标记偏离专辑中位阈值（LUFS、LRA、PLR、TP、频段、相关性）的曲目和段落。
+- **专辑风险聚合与交付门禁**：按严重度排序平台归一化、编码 / TP、信号缺陷、单声道折叠、曲目间不一致；五个规则开关可自定义阻断项；输出阻断 / 放行结论。
+- **基准 / 规则持久化、共享、版本化**：专辑快照、中位、参考轨快照、检查规则保存在 `album.json`；可导入 / 导出 JSON 供团队共享；保存上一版快照并自动 diff，只高亮新增或恶化项。
+- **可复现交付证明**：专辑页「导出证明」输出 JSON + TXT，包含 schema / 版本 / 修订号、每首快照、中位、规则、门禁、风险排序、版本 diff、快照哈希与证据哈希（证据哈希不包含生成时间，可复算）。
+- **问题联动试听**：信号健康六张卡片与专辑风险行可点击；自动循环最近 / 风险时间片段、按频段滤波、做 RMS 响度匹配、5 ms 淡入淡出与峰值保护。默认旁路逐位不变，Esc 停止。
+- **DAW 标记交换与自动化（1.5 范围）**：时间线页可导出 / 导入标记 CSV（timecode / seconds / severity / text）。VST3 / AU 没有跨宿主标记写回 API，因此本版提供 CSV 交换而非声称直接写回每家 DAW；自动化参数提供 transport start 重置、stop 采集、stop 导出证明、命令选择（重置 / 采集 / 证明 / 标记 / 清空）。
+- **厂商名**：`COMPANY_NAME` / VST3 vendor / AU 名称 / Bundle ID 统一为 **BerryStudio**（AU 显示 `BerryStudio: MasterLens`，VST3 厂商为 BerryStudio）。AU manufacturer code 仍为 `OrcA` 以保持已有工程兼容。
+- **UI 修复**：版本号与 by BerryStudio 改为左侧品牌区动态布局，按可用宽度测量、必要时隐藏副标题，不再被右侧控件遮挡；标题副行明确“默认旁路，试听时改变输出”。
+- **验证**：46 项离线 DSP 断言通过（新增试听旁路 / 激活 / 停止恢复）；`auval` 通过；专辑证明 JSON 可生成并带哈希。版本号 **1.5.0**。
 
 ---
 
@@ -188,9 +211,9 @@ Build: `./scripts/make_dmg.sh` (universal binary, ad-hoc signed).
 - **联动归因层**：同一根因下同时越线的层会合并成一条结论（限幅链、低频侧向、掩蔽叠加、混叠+失真）。
 
 ### 可视化
-- 实时频谱：8192 点 FFT、**20 fps 频谱分析 / 30 fps 界面**、对数频率轴、功率域分数倍频程平滑
+- 实时频谱：8192 点 FFT、**频谱页 60 fps（其他页低负载刷新）**、对数频率轴、功率域分数倍频程平滑
   （≤250 Hz 1/3 oct、≤4 kHz 1/6 oct、更高 1/12 oct）、峰值保持、三次曲线绘制
-- 短时响度历史：最近 3 分钟，带目标区间与目标线
+- 短时响度历史：最近 3 分钟，带基准区间与基准线
 - M / S 电平条、相关性 / 宽度 / 低频单声道仪表、失真事件计数
 - 一键导出 TXT / JSON / CSV 分析报告（含全部测量值、信号完整性、归一化后果与诊断结论）
 

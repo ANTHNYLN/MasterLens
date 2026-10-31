@@ -5,6 +5,7 @@
 #include "dsp/AnalysisEngine.h"
 #include "dsp/SpectrumAnalyzer.h"
 #include "dsp/DefectAnalyzer.h"
+#include "audio/AuditionEngine.h"
 #include "Delivery.h"
 
 static int failures = 0;
@@ -424,7 +425,65 @@ int main()
     }
 
     // ---------------------------------------------------------------------
-    // 9) CPU benchmark (stereo, 48 kHz, 512-sample blocks)
+    // 9) audition is bit-transparent until explicitly started
+    // ---------------------------------------------------------------------
+    {
+        ml::AuditionEngine audition;
+        audition.prepare (sr, 2);
+
+        juce::AudioBuffer<float> buffer (2, 512);
+        juce::AudioBuffer<float> original (2, 512);
+
+        for (int n = 0; n < 512; ++n)
+        {
+            const float v = 0.25f * std::sin (2.0f * juce::MathConstants<float>::pi
+                                              * 440.0f * (float) n / (float) sr);
+            buffer.setSample (0, n, v);
+            buffer.setSample (1, n, -v);
+        }
+
+        original.makeCopyOf (buffer);
+        audition.process (buffer);
+        double maxDiff = 0.0;
+
+        for (int ch = 0; ch < 2; ++ch)
+            for (int n = 0; n < 512; ++n)
+                maxDiff = juce::jmax (maxDiff, (double) std::abs (buffer.getSample (ch, n)
+                                                                  - original.getSample (ch, n)));
+
+        check ("audition bypass diff", maxDiff, 0.0, 1.0e-9);
+
+        audition.start (0.0, 0.5, 200.0f, 2000.0f, false);
+        audition.process (buffer);
+        bool finite = true;
+        double energy = 0.0;
+
+        for (int ch = 0; ch < 2; ++ch)
+            for (int n = 0; n < 512; ++n)
+            {
+                const float v = buffer.getSample (ch, n);
+                finite = finite && std::isfinite (v) && std::abs (v) <= 1.0f;
+                energy += (double) v * v;
+            }
+
+        check ("audition active finite", finite ? 1.0 : 0.0, 1.0, 0.0);
+        check ("audition active energy", energy > 1.0e-6 ? 1.0 : 0.0, 1.0, 0.0);
+
+        audition.stop();
+        buffer.makeCopyOf (original);
+        audition.process (buffer);
+        maxDiff = 0.0;
+
+        for (int ch = 0; ch < 2; ++ch)
+            for (int n = 0; n < 512; ++n)
+                maxDiff = juce::jmax (maxDiff, (double) std::abs (buffer.getSample (ch, n)
+                                                                  - original.getSample (ch, n)));
+
+        check ("audition stop restores bypass", maxDiff, 0.0, 1.0e-9);
+    }
+
+    // ---------------------------------------------------------------------
+    // 10) CPU benchmark (stereo, 48 kHz, 512-sample blocks)
     // ---------------------------------------------------------------------
     {
         ml::Stats stats;

@@ -2,6 +2,7 @@
 
 #include <juce_core/juce_core.h>
 #include "dsp/AnalysisEngine.h"
+#include "Basis.h"
 
 namespace ml
 {
@@ -89,5 +90,31 @@ inline DeliveryResult evaluate (const StatsSnapshot& s, const PlatformPreset& p)
             : (r.predictedTp > p.tpCeiling - 0.5f ? DeliveryState::warning
                                                   : DeliveryState::ok);
     return r;
+}
+
+/** Aggregated worst case over all platforms (used by the main view). */
+inline PlatformSummary platformSummary (const StatsSnapshot& s)
+{
+    PlatformSummary out;
+
+    for (int i = 0; i < numPlatforms; ++i)
+    {
+        const auto& p = platform (i);
+        const auto r = evaluate (s, p);
+        const float gain = r.gainDb;
+
+        if (gain < 0.0f)
+            out.maxCutDb = juce::jmax (out.maxCutDb, -gain);
+        else
+            out.maxBoostDb = juce::jmax (out.maxBoostDb, gain);
+
+        out.maxLimitedDb = juce::jmax (out.maxLimitedDb, r.limitedDb);
+        out.maxWastedDb = juce::jmax (out.maxWastedDb, r.wastedLoudnessDb);
+
+        if (r.state == DeliveryState::over)         ++out.overCount;
+        else if (r.state == DeliveryState::warning) ++out.warningCount;
+    }
+
+    return out;
 }
 } // namespace ml

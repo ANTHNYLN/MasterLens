@@ -1,5 +1,6 @@
 #include "Advisor.h"
 #include "../Delivery.h"
+#include "../Basis.h"
 #include "../Text.h"
 #include "../dsp/SpectrumAnalyzer.h"
 #include "Localisation.h"
@@ -36,7 +37,9 @@ void Advisor::update (const StatsSnapshot& stats,
                       const std::vector<float>& bandDevs,
                       float targetLufs,
                       float ceilingDb,
-                      const SignalDefects& defects)
+                      const SignalDefects& defects,
+                      const BasisContext& basis,
+                      bool hasTonalBasis)
 {
     ++frame;
 
@@ -58,28 +61,56 @@ void Advisor::update (const StatsSnapshot& stats,
     // ---------------------------------------------------------------- loudness
     if (stats.integrated > -70.0f)
     {
-        const double diff = (double) stats.integrated - (double) targetLufs;
+        if (basis.hasComparison() && basis.mode != BasisMode::manual)
+        {
+            const double diff = (double) stats.integrated - (double) basis.comparisonLufs();
+            const double plrDiff = (double) stats.getPlr() - (double) basis.comparisonPlr();
+            const auto basisName = basis.label();
 
-        if (diff > 2.0)
-            add ("loud-high", T ("整体响度高于目标", "Louder than target"),
-                 TF (T ("综合响度 {i} LUFS，比目标 {t} LUFS 高 {d} LU。流媒体归一化后会整体衰减，压缩余量被浪费。",
-                        "Integrated {i} LUFS, {d} LU louder than the {t} LUFS target. Streaming "
-                        "normalisation will turn it down, so the extra limiting buys nothing."),
-                     { { "i", one (stats.integrated) }, { "t", one (targetLufs) }, { "d", one (diff) } }),
-                 Severity::warn);
-        else if (diff < -2.5)
-            add ("loud-low", T ("整体响度低于目标", "Quieter than target"),
-                 TF (T ("综合响度 {i} LUFS，比目标低 {d} LU。以流媒体为目标时可适度提升；若要保留动态则无需处理。",
-                        "Integrated {i} LUFS, {d} LU below the {t} LUFS target. Raise it if you are "
-                        "mastering for streaming; keep it if you want the dynamics."),
-                     { { "i", one (stats.integrated) }, { "t", one (targetLufs) }, { "d", one (-diff) } }),
-                 Severity::info);
+            if (std::abs (diff) > 1.5 || std::abs (plrDiff) > 1.5)
+            {
+                const bool louder = diff > 0.0;
+                add ("basis-diff", T ("与基准的响度 / 动态差", "Loudness / dynamics vs basis"),
+                     T ("综合响度 ", "Integrated ") + one (stats.integrated) + " LUFS，"
+                         + T ("比", "vs ") + basisName + " " + oneSigned (-diff) + " LU；"
+                         + "PLR " + oneSigned (-plrDiff) + " LU。"
+                         + (louder ? T ("归一化后感知响度不变，但动态余量更少。",
+                                        "Normalisation keeps perceived level but leaves less dynamic headroom.")
+                                   : T ("保留更多动态；以平台归一化为目标时通常无需提升。",
+                                        "More dynamics retained; no need to raise it for normalised platforms.")),
+                     Severity::info);
+            }
+            else
+            {
+                add ("basis-ok", T ("与基准接近", "Close to basis"),
+                     T ("综合响度与 PLR 均接近", "Integrated loudness and PLR are close to ")
+                         + basisName + T ("；没有固定曲风目标被套用。", "; no fixed genre target is applied."),
+                     Severity::good);
+            }
+        }
         else
-            add ("loud-ok", T ("综合响度已对齐目标", "Integrated loudness on target"),
-                 TF (T ("综合响度 {i} LUFS，处于目标 ±2 LU 范围内。",
-                        "Integrated {i} LUFS, within ±2 LU of the {t} LUFS target."),
-                     { { "i", one (stats.integrated) }, { "t", one (targetLufs) } }),
-                 Severity::good);
+        {
+            const auto p = platformSummary (stats);
+
+            if (p.maxWastedDb > 3.0f || p.maxLimitedDb > 0.05f)
+            {
+                add ("platform-norm", T ("平台归一化后果", "Platform normalisation consequence"),
+                     T ("最坏平台需衰减 ", "Worst platform attenuates ")
+                         + one (p.maxCutDb) + T (" dB；被丢弃 ", " dB; wasted ")
+                         + one (p.maxWastedDb) + T (" LU，服务端限幅 ", " LU, service limiting ")
+                         + one (p.maxLimitedDb) + " dB。"
+                         + T ("归一化后感知响度不变，损失的是动态余量。",
+                              "Perceived level after normalisation is unchanged; the loss is dynamic headroom."),
+                     Severity::info);
+            }
+            else
+            {
+                add ("platform-ok", T ("平台归一化无需额外处理", "No extra platform normalisation"),
+                     T ("最坏平台衰减 ", "Worst attenuation ") + one (p.maxCutDb)
+                         + T (" dB，服务端限幅 ", " dB, service limiting ") + one (p.maxLimitedDb) + " dB。",
+                     Severity::good);
+            }
+        }
     }
 
     if (stats.truePeakDb > (double) ceilingDb + 0.05)
@@ -260,7 +291,7 @@ void Advisor::update (const StatsSnapshot& stats,
              Severity::warn);
 
     // ----------------------------------------------------------------- spectral
-    if (signal && bandDevs.size() == (size_t) SpectrumAnalyzer::numBands)
+    if (signal && hasTonalBasis && bandDevs.size() == (size_t) SpectrumAnalyzer::numBands)
     {
         const auto dev = [&bandDevs] (int i) { return (double) bandDevs[(size_t) i]; };
         const auto label = [] (int i)
@@ -348,6 +379,14 @@ void Advisor::update (const StatsSnapshot& stats,
                 break;
             }
         }
+    }
+    else if (signal && ! hasTonalBasis)
+    {
+        add ("basis-missing", T ("频谱不设绝对目标", "No absolute spectral target"),
+             T ("未载入参考轨，且专辑中位不足两条；频谱平衡只会在有参考 / 专辑基准时给出判断。",
+                "No reference tracks and fewer than two album tracks: spectral balance is only judged "
+                "against a reference or album median."),
+             Severity::info);
     }
 
     bool anyBad = false;
@@ -458,7 +497,7 @@ void Advisor::update (const StatsSnapshot& stats,
                  Severity::good);
     }
 
-    if (signal && bandDevs.size() == (size_t) SpectrumAnalyzer::numBands)
+    if (signal && hasTonalBasis && bandDevs.size() == (size_t) SpectrumAnalyzer::numBands)
     {
         float worst = 0.0f;
 

@@ -20,33 +20,66 @@ void MasterLensAudioProcessorEditor::paint (juce::Graphics& g)
         content.removeFromLeft (12);
 
         const int textX = content.getX();
+        const int brandRight = juce::jmax (textX + 80, presetBox.getX() - 12);
+        const int maxW = juce::jmax (80, brandRight - textX);
+
+        g.saveState();
+        g.reduceClipRegion (juce::Rectangle<int> (textX, headerArea.getY(), maxW, headerArea.getHeight()));
+
         const auto nameFont = ml::uiFont (15.0f, true);
+        const auto name = juce::String ("MasterLens");
+        const int nameW = juce::roundToInt (juce::GlyphArrangement::getStringWidth (nameFont, name));
 
         g.setColour (ml::theme::text);
         g.setFont (nameFont);
-        g.drawText ("MasterLens", juce::Rectangle<int> (textX, content.getY(), 200, 22),
+        g.drawText (name, textX, content.getY() - 1, nameW + 4, 22,
                     juce::Justification::centredLeft, false);
 
-        g.setColour (ml::theme::textFaint);
-        g.setFont (ml::uiFont (ml::tokens::aux));
-        g.drawText ("v" + juce::String (ml::kVersion),
-                    juce::Rectangle<int> (textX + 206, content.getY(), 56, 22),
-                    juce::Justification::centredLeft, false);
+        int x = textX + nameW + 10;
 
-        g.setColour (ml::theme::cyan);
-        g.setFont (ml::uiFont (ml::tokens::unit, true));
-        g.drawText ("by BerryStudio",
-                    juce::Rectangle<int> (textX + 258, content.getY() + 1, 130, 20),
-                    juce::Justification::centredLeft, false);
+        const auto versionText = "v" + juce::String (ml::kVersion);
+        const auto versionFont = ml::uiFont (ml::tokens::aux);
+        const int versionW = juce::roundToInt (
+            juce::GlyphArrangement::getStringWidth (versionFont, versionText)) + 12;
+
+        if (x + versionW < brandRight)
+        {
+            auto chip = juce::Rectangle<int> (x, content.getY(), versionW, 17);
+
+            g.setColour (ml::theme::cardAlt);
+            g.fillRoundedRectangle (chip.toFloat(), 8.5f);
+            g.setColour (ml::theme::border);
+            g.drawRoundedRectangle (chip.toFloat().reduced (0.5f), 8.5f, 1.0f);
+            g.setColour (ml::theme::textFaint);
+            g.setFont (versionFont);
+            g.drawText (versionText, chip, juce::Justification::centred, false);
+
+            x += versionW + 8;
+        }
+
+        const auto devFont = ml::uiFont (ml::tokens::unit, true);
+        const auto devText = juce::String ("by BerryStudio");
+        const int devW = juce::roundToInt (juce::GlyphArrangement::getStringWidth (devFont, devText)) + 4;
+
+        if (x + devW < brandRight)
+        {
+            g.setColour (ml::theme::cyan);
+            g.setFont (devFont);
+            g.drawText (devText, x, content.getY() + 1, devW, 20,
+                        juce::Justification::centredLeft, false);
+        }
 
         g.setColour (ml::theme::textDim);
         g.setFont (ml::uiFont (ml::tokens::unit));
-        g.drawText (T ("母带交付检查 · 不修改音频", "Mastering QC · never alters audio"),
-                    textX, content.getY() + 24, 320, 14, juce::Justification::centredLeft);
+        g.drawText (T ("BerryStudio · 母带交付检查 · 默认旁路，试听时改变输出",
+                       "BerryStudio · mastering QC · bypassed unless auditioning"),
+                    textX, content.getY() + 24, maxW, 14, juce::Justification::centredLeft);
 
-        if (frozen)
+        g.restoreState();
+
+        if (frozen && maxW > 360)
         {
-            const auto pill = juce::Rectangle<int> (textX + 330, content.getY() + 23, 56, 16);
+            const auto pill = juce::Rectangle<int> (brandRight - 64, content.getY() + 23, 56, 16);
 
             g.setColour (ml::theme::warn.withAlpha (0.16f));
             g.fillRoundedRectangle (pill.toFloat(), 8.0f);

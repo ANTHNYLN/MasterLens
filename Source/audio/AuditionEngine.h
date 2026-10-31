@@ -1,0 +1,69 @@
+#pragma once
+
+#include <atomic>
+#include <vector>
+
+#include <juce_audio_basics/juce_audio_basics.h>
+
+namespace ml
+{
+/** Problem audition: loops a short slice of the recent input, band-limits it and
+    matches its loudness to the full-band slice. Bypassed (bit-transparent) unless
+    the user explicitly starts an audition.
+*/
+class AuditionEngine
+{
+public:
+    void prepare (double sampleRate, int numChannels);
+    void reset();
+
+    /** Message-thread request. Times are seconds relative to the measurement. */
+    void start (double startSeconds, double endSeconds, float lowHz, float highHz, bool monoFold);
+    void stop();
+
+    bool isActive() const noexcept { return active.load (std::memory_order_acquire); }
+    float lowHz() const noexcept { return requestedLo.load (std::memory_order_relaxed); }
+    float highHz() const noexcept { return requestedHi.load (std::memory_order_relaxed); }
+    bool mono() const noexcept { return requestedMono.load (std::memory_order_relaxed); }
+
+    /** Audio-thread processing. History is always captured; output is replaced
+        only while an audition is active. */
+    void process (juce::AudioBuffer<float>& buffer);
+
+private:
+    struct Biquad
+    {
+        float b0 = 1.0f, b1 = 0.0f, b2 = 0.0f, a1 = 0.0f, a2 = 0.0f;
+        float z1 = 0.0f, z2 = 0.0f;
+
+        void reset() noexcept { z1 = z2 = 0.0f; }
+        void setHighPass (double sr, double hz, double q) noexcept;
+        void setLowPass (double sr, double hz, double q) noexcept;
+        float process (float x) noexcept
+        {
+            const float y = b0 * x + z1;
+            z1 = b1 * x - a1 * y + z2;
+            z2 = b2 * x - a2 * y;
+            return y;
+        }
+    };
+
+    std::vector<float> left, right;
+    int ringLength = 0;
+    int writePos = 0;
+    int64_t totalSamples = 0;
+    double sampleRate = 48000.0;
+
+    std::atomic<bool> pendingStart { false };
+    std::atomic<bool> active { false };
+    std::atomic<double> requestedStart { 0.0 }, requestedEnd { 0.0 };
+    std::atomic<float> requestedLo { 20.0f }, requestedHi { 20000.0f };
+    std::atomic<bool> requestedMono { false };
+
+    int loopStart = 0, loopLength = 0, loopPos = 0;
+    float gain = 1.0f;
+    int fadeSamples = 1;
+
+    Biquad hpL, hpR, lpL, lpR;
+};
+} // namespace ml

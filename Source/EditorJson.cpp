@@ -27,7 +27,29 @@ juce::String MasterLensAudioProcessorEditor::buildReportJson() const
     loud->setProperty ("psrMin", stats.psrMin);
     loud->setProperty ("psrMinTime", stats.psrMinTime);
     loud->setProperty ("targetLufs", processor.getTargetLufs());
+    loud->setProperty ("basisMode", (int) currentBasis().mode);
+    loud->setProperty ("basisLabel", currentBasis().label());
+    loud->setProperty ("platformWorstCutDb", ml::platformSummary (stats).maxCutDb);
+    loud->setProperty ("platformWastedLu", ml::platformSummary (stats).maxWastedDb);
     root->setProperty ("loudness", loud);
+
+    auto* album = new juce::DynamicObject();
+    const auto albumSnap = albumSnapshot;
+    const auto albumGate = ml::album::Session::evaluate (albumSnap);
+    album->setProperty ("name", albumSnap.albumName);
+    album->setProperty ("revision", albumSnap.revision);
+    album->setProperty ("tracks", (int) albumSnap.tracks.size());
+    album->setProperty ("blocked", albumGate.blocked);
+    album->setProperty ("incomplete", albumGate.incomplete);
+    album->setProperty ("blockers", albumGate.blockers);
+
+    juce::Array<juce::var> albumReasons;
+
+    for (const auto& reason : albumGate.reasons)
+        albumReasons.add (reason);
+
+    album->setProperty ("reasons", albumReasons);
+    root->setProperty ("album", album);
 
     auto* peak = new juce::DynamicObject();
     peak->setProperty ("truePeakDbtp", stats.truePeakDb);
@@ -147,10 +169,13 @@ juce::String MasterLensAudioProcessorEditor::buildReportJson() const
 
     juce::Array<juce::var> checks;
 
-    for (const auto& c : ml::buildChecklist (stats, processor.getTargetLufs(),
+    for (const auto& c : ml::buildChecklist (stats,
                                              processor.getCeilingDb(),
-                                             analyzer.getBandDeviations(),
-                                             signalDefects))
+                                             currentBandDevs(),
+                                             signalDefects,
+                                             currentBasis(),
+                                             ml::platformSummary (stats),
+                                             analyzer.hasReference() || currentBasis().hasAlbum))
     {
         auto* o = new juce::DynamicObject();
         o->setProperty ("label", c.label);

@@ -1,5 +1,6 @@
 #include <juce_gui_extra/juce_gui_extra.h>
 
+#include <cstdlib>
 #include <ctime>
 
 #include "PluginEditor.h"
@@ -55,6 +56,7 @@ public:
             if (commandLine.containsIgnoreCase ("page" + juce::String (p)))
                 pageShot = p;
 
+        setenv ("MASTERLENS_ALBUM_FILE", "/tmp/masterlens_ui_album.json", 1);
         processor = std::make_unique<MasterLensAudioProcessor>();
         processor->setRateAndBufferSizeDetails (48000.0, 512);
         processor->prepareToPlay (48000.0, 512);
@@ -75,6 +77,19 @@ public:
 
         if (pageShot >= 0)
             editor->setPageForSnapshot (pageShot);
+
+        if (commandLine.containsIgnoreCase ("albumcap"))
+        {
+            editor->runTimerTickForSnapshot();
+            editor->runTimerTickForSnapshot();
+            editor->captureAlbumAsForSnapshot ("Track A");
+            editor->captureAlbumAsForSnapshot ("Track B");
+            editor->runTimerTickForSnapshot();
+
+            if (commandLine.containsIgnoreCase ("albumproof"))
+                juce::File ("/tmp/masterlens_ui_proof.json")
+                    .replaceWithText (ml::album::Session::get().exportProofJson());
+        }
 
         if (aboutShot)
             editor->setAboutVisible (true);

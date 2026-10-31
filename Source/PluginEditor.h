@@ -4,6 +4,8 @@
 
 #include "PluginProcessor.h"
 #include "Text.h"
+#include "Basis.h"
+#include "album/AlbumSession.h"
 #include "dsp/ReferenceSpectrum.h"
 #include "ui/Modules.h"
 #include "ui/Theme.h"
@@ -34,6 +36,14 @@ public:
     void setThemeForSnapshot (bool useDark);
     void setScaleForSnapshot (float scale) { setUiScale (scale, false); }
     void captureSnapshotForSnapshot (int slot);
+    void setBasisForSnapshot (int basis) { presetBox.setSelectedId (basis + 1, juce::dontSendNotification); applyPreset (basis); }
+    void captureAlbumForSnapshot() { captureAlbum(); }
+    void captureAlbumAsForSnapshot (const juce::String& label)
+    {
+        detail.setAlbumTrackLabel (label);
+        captureAlbum();
+    }
+    void runTimerTickForSnapshot() { timerCallback(); }
 
 private:
     void timerCallback() override;
@@ -43,6 +53,16 @@ private:
     void applyPreset (int index);
     void showGenreInfo();
     void syncPresetToParameters();
+    void refreshAlbum();
+    void captureAlbum();
+    void exportAlbumProof();
+    void importAlbumSnapshot();
+    void clearAlbum();
+    void setAlbumRule (int index, bool enabled);
+    void auditionSignal (int index);
+    void auditionRiskDetail (const juce::String& detail);
+    ml::BasisContext currentBasis() const;
+    std::vector<float> currentBandDevs() const;
     void resetAnalysis();
     void exportReport();
     void importReference();
@@ -61,6 +81,8 @@ private:
     void attachShortcutListener (juce::Component& c);
     void addMarker (double t, int severity, int category, const juce::String& text);
     void addManualMarker (double time);
+    void exportMarkers();
+    void importMarkers();
     void captureSnapshot (int slot);
     void recallSnapshot (int slot);
     void clearSnapshot (int slot);
@@ -99,6 +121,14 @@ private:
 
     ml::Snapshot snapshots[2];
     int viewingSnapshot = -1;
+    int lastAuditionIndex = -1;
+
+    ml::BasisMode basisMode = ml::BasisMode::platform;
+    ml::AlbumSnapshot albumSnapshot;
+    ml::album::GateResult albumGate;
+    ml::album::Diff albumDiff;
+    bool albumNameEditorInitialised = false;
+    juce::String lastAlbumName;
 
     double analyzerSampleRate = 0.0;
     bool frozen = false;

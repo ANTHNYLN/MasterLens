@@ -12,6 +12,7 @@ static juce::String pageTitle (PageId p)
         case PageId::spectrum:    return T ("频谱平衡", "Spectral balance");
         case PageId::stereo:      return T ("立体声 / 相位", "Stereo / phase");
         case PageId::delivery:    return T ("平台归一化", "Platform normalisation");
+        case PageId::album:       return T ("专辑统一 / 交付门禁", "Album consistency / release gate");
         case PageId::signal:      return T ("信号健康", "Signal health");
         case PageId::diagnostics: return T ("混音诊断", "Mix diagnostics");
         case PageId::timeline:    return T ("时间线", "Timeline");
@@ -49,7 +50,7 @@ void DetailArea::paint (juce::Graphics& g)
     {
         case PageId::loudness:
             meta = juce::String ("M 400 ms") + ml::sep() + "S 3 s" + ml::sep() + "I " + T ("门限", "gated")
-                 + ml::sep() + T ("目标 ", "target ") + num (state.target) + " LUFS";
+                 + ml::sep() + T ("基准 ", "basis ") + state.basis.label();
 
             if (state.snapshotSlot >= 0)
                 meta += ml::sep() + (state.snapshotSlot == 0 ? "A" : "B") + T (" 快照", " snapshot");
@@ -61,10 +62,12 @@ void DetailArea::paint (juce::Graphics& g)
             break;
 
         case PageId::spectrum:
-            meta = (state.hasReference ? T ("参考: ", "Ref: ") + state.referenceStatus
-                                       : T ("无参考轨", "no reference"))
+            meta = (state.basis.mode == ml::BasisMode::album && state.basis.hasAlbum
+                        ? T ("专辑中位: ", "Album median: ") + state.basis.albumLabel
+                        : (state.hasReference ? T ("参考: ", "Ref: ") + state.referenceStatus
+                                              : T ("无参考 / 专辑基准", "no reference / album basis")))
                  + ml::sep() + T ("谐振 ", "res ") + juce::String ((int) state.resonances.size())
-                 + ml::sep() + "8192 FFT";
+                 + ml::sep() + "8192 FFT · 60 fps";
             break;
 
         case PageId::stereo:
@@ -81,6 +84,12 @@ void DetailArea::paint (juce::Graphics& g)
             meta = T ("失真 / 混叠 / 超低 / 瞬态 / 单声道 / 掩蔽", "THD-IMD / alias / sub / transient / mono / masking")
                  + ml::sep() + T ("最高风险 ", "max risk ")
                  + juce::String (juce::roundToInt (state.defects.worstRisk()));
+            break;
+
+        case PageId::album:
+            meta = state.album.albumName + ml::sep() + "rev " + juce::String (state.album.revision)
+                 + ml::sep() + juce::String ((int) state.album.tracks.size()) + T (" 首", " tracks")
+                 + ml::sep() + (state.albumGate.blocked ? T ("阻断", "BLOCK") : T ("放行", "PASS"));
             break;
 
         case PageId::diagnostics:
@@ -107,6 +116,7 @@ void DetailArea::paint (juce::Graphics& g)
         case PageId::spectrum:    paintSpectrumExtras (g); break;
         case PageId::stereo:      paintStereoExtras (g);   break;
         case PageId::delivery:    paintDelivery (g);       break;
+        case PageId::album:       paintAlbum (g);          break;
         case PageId::signal:      paintSignal (g);         break;
         case PageId::diagnostics: paintDiagnostics (g);    break;
         case PageId::timeline:    paintTimeline (g);       break;

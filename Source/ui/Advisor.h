@@ -6,6 +6,7 @@
 
 #include "../dsp/AnalysisEngine.h"
 #include "../dsp/DefectAnalyzer.h"
+#include "../Basis.h"
 
 namespace ml
 {
@@ -35,7 +36,9 @@ public:
                  const std::vector<float>& bandDeviations,
                  float targetLufs,
                  float ceilingDb,
-                 const SignalDefects& defects);
+                 const SignalDefects& defects,
+                 const BasisContext& basis,
+                 bool hasTonalBasis);
 
     const std::vector<Issue>& getIssues() const noexcept { return visible; }
 

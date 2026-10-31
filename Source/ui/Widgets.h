@@ -6,6 +6,7 @@
 #include <set>
 #include <vector>
 
+#include "../Basis.h"
 #include "../Text.h"
 #include "../dsp/AnalysisEngine.h"
 #include "../dsp/SpectrumAnalyzer.h"
@@ -38,10 +39,12 @@ struct CheckResult
     use, so the list can always be traced back to a written rule.
 */
 std::vector<CheckResult> buildChecklist (const StatsSnapshot& stats,
-                                         float targetLufs,
                                          float ceilingDb,
                                          const std::vector<float>& bandDevs,
-                                         const SignalDefects& defects = {});
+                                         const SignalDefects& defects = {},
+                                         const BasisContext& basis = {},
+                                         const PlatformSummary& platform = {},
+                                         bool hasTonalBasis = false);
 
 /** Centred "play audio to start measuring" illustration + copy. */
 void paintEmptyState (juce::Graphics&, juce::Rectangle<int> area);
@@ -51,7 +54,9 @@ void paintEmptyState (juce::Graphics&, juce::Rectangle<int> area);
 class MetricGrid : public juce::Component
 {
 public:
-    void setValues (const StatsSnapshot& s, float targetLufs, float ceilingDb, bool signal);
+    void setValues (const StatsSnapshot& s, const BasisContext& basis,
+                    const PlatformSummary& platform, float targetLufs,
+                    float ceilingDb, bool signal);
 
     void paint (juce::Graphics&) override;
 
@@ -61,6 +66,8 @@ private:
                     const juce::String& hint, const juce::String& pill, juce::Colour colour);
 
     StatsSnapshot stats;
+    BasisContext basis;
+    PlatformSummary platform;
     float target = -14.0f;
     float ceiling = -1.0f;
     bool hasSignal = false;

@@ -60,11 +60,10 @@ void MasterLensAudioProcessorEditor::timerCallback()
 
     analyzer.setSmoothing (processor.getSmoothing());
 
-    // Page-aware analysis rate: the spectrum page gets 20 fps, other pages only
-    // need the band data for the rail/advisor (5 fps). Hold stops FFT work too.
+    // 60 fps on the spectrum page, 5 fps band data on other pages, no FFT while
+    // Hold is engaged.
     const bool spectrumVisible = selectedPage == (int) ml::PageId::spectrum;
-    const bool runAnalyzer = spectrumVisible ? (frameCounter % 3) != 0
-                                             : (frameCounter % 6) == 0;
+    const bool runAnalyzer = spectrumVisible || (frameCounter % 12) == 0;
 
     if (! frozen && runAnalyzer)
         analyzer.update (processor.spectrumRing);
@@ -78,13 +77,29 @@ void MasterLensAudioProcessorEditor::timerCallback()
         return;
     }
 
+    // The 60 Hz timer is reserved for the spectrum; every other page updates at
+    // 30 Hz so the 1.4.3 low-load behaviour is preserved.
+    if (! spectrumVisible && (frameCounter & 1) != 0)
+        return;
+
     stats = processor.getStatsSnapshot();
 
     if (viewingSnapshot >= 0 && snapshots[viewingSnapshot].valid)
         stats = snapshots[viewingSnapshot].stats;
 
-    const float target = processor.getTargetLufs();
+    const float manualTarget = processor.getTargetLufs();
     const float ceiling = processor.getCeilingDb();
+
+    if ((frameCounter % 30) == 0)
+        refreshAlbum();
+
+    const auto basis = currentBasis();
+    const auto platform = ml::platformSummary (stats);
+    const auto devs = currentBandDevs();
+    const bool hasTonalBasis = basis.hasComparison() && basis.mode != ml::BasisMode::manual;
+
+    const float target = basis.hasComparison() ? basis.comparisonLufs()
+                       : (basis.mode == ml::BasisMode::manual ? manualTarget : -14.0f);
 
     {
         const auto& ring = processor.engine.getTpEvents();
@@ -99,10 +114,9 @@ void MasterLensAudioProcessorEditor::timerCallback()
 
     bandRatios = analyzer.getBandRatios();
 
-    const auto& devs = analyzer.getBandDeviations();
     const auto& resos = analyzer.getResonances();
 
-    if ((frameCounter % 15) == 0)
+    if ((frameCounter % 30) == 0)
         signalDefects = ml::analyseSignalDefects (analyzer.getAverageSpectrumDb(),
                                                   analyzer.getBinHz(), stats);
 
@@ -132,6 +146,18 @@ void MasterLensAudioProcessorEditor::timerCallback()
     us.tpEvents = tpEvents;
     us.markers = markers;
     us.defects = signalDefects;
+    us.basis = basis;
+    us.platform = platform;
+
+    if (selectedPage == (int) ml::PageId::album)
+    {
+        us.album = albumSnapshot;
+        us.albumGate = albumGate;
+        us.albumDiff = albumDiff;
+    }
+
+    us.bandDb = analyzer.getBandDensities();
+    us.hasTonalBasis = hasTonalBasis;
     us.hasReferenceStats = reference.hasStats();
 
     if (us.hasReferenceStats)
@@ -154,15 +180,16 @@ void MasterLensAudioProcessorEditor::timerCallback()
 
     detail.setState (std::move (us));
 
-    if ((frameCounter % 6) == 0)
+    if ((frameCounter % 12) == 0)
         detail.setReferenceInfo (analyzer.hasReference(), reference.getStatus());
 
-    if ((frameCounter % 15) == 0)
+    if ((frameCounter % 30) == 0)
         timeline.setMarkers (markers, juce::jmax (30.0, stats.elapsed));
 
-    timeline.setPlayhead (stats.elapsed);
+    if ((frameCounter % 3) == 0)
+        timeline.setPlayhead (stats.elapsed);
 
-    if ((frameCounter % 2) == 0)
+    if ((frameCounter % 6) == 0)
     {
         if (viewingSnapshot < 0)
         {
@@ -173,9 +200,29 @@ void MasterLensAudioProcessorEditor::timerCallback()
 
     // The advisor, issue list and rail only need a few updates per second; the
     // meters and spectrum keep their full frame rate.
-    if ((frameCounter % 6) == 0)
+    if ((frameCounter % 12) == 0)
     {
-        advisor.update (stats, devs, target, ceiling, signalDefects);
+    if ((frameCounter % 12) == 0)
+    {
+        const int command = processor.consumePendingUiCommand();
+
+        if (command == 2)
+            captureAlbum();
+        else if (command == 3)
+        {
+            const auto file = juce::File::getSpecialLocation (juce::File::userDesktopDirectory)
+                                  .getChildFile ("MasterLens-Album-Proof-auto.json");
+            file.replaceWithText (ml::album::Session::get().exportProofJson());
+            footerStatusText = T ("已生成交付证明（桌面）", "Proof saved to Desktop");
+            footerStatusColour = ml::theme::good;
+        }
+        else if (command == 4)
+            exportMarkers();
+        else if (command == 5)
+            clearAlbum();
+    }
+
+    advisor.update (stats, devs, target, ceiling, signalDefects, basis, hasTonalBasis);
         issueCache = advisor.getIssues();
 
         detail.setIssues (issueCache);

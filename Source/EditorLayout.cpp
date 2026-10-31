@@ -78,8 +78,6 @@ void MasterLensAudioProcessorEditor::resized()
 
         const int presetW = juce::jlimit (150, 240, h.getWidth() - 360);
         presetBox.setBounds (h.removeFromRight (presetW).withSizeKeepingCentre (presetW, 28));
-        h.removeFromRight (6);
-        infoButton.setBounds (h.removeFromRight (28).withSizeKeepingCentre (28, 28));
     }
 
     // ---- parameter bar: 12 column grid --------------------------------------

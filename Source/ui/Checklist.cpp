@@ -10,10 +10,12 @@ namespace ml
     gating result) - nothing is learned, fetched or guessed.
 */
 std::vector<CheckResult> buildChecklist (const StatsSnapshot& s,
-                                         float targetLufs,
                                          float ceilingDb,
                                          const std::vector<float>& bandDevs,
-                                         const SignalDefects& defects)
+                                         const SignalDefects& defects,
+                                         const BasisContext& basis,
+                                         const PlatformSummary& platform,
+                                         bool hasTonalBasis)
 {
     std::vector<CheckResult> rows;
     rows.reserve (15);
@@ -31,17 +33,42 @@ std::vector<CheckResult> buildChecklist (const StatsSnapshot& s,
         rows.push_back (std::move (r));
     };
 
-    // 1) integrated loudness vs user target (hard limit: +/- 2 LU)
+    // 1) basis comparison or platform-normalisation consequence (never a genre target)
     {
         const bool valid = live && s.integrated > -70.0f;
-        const float diff = s.integrated - targetLufs;
-        const auto sev = ! valid ? Severity::info
-                       : (std::abs (diff) <= 1.0f ? Severity::good
-                       : (std::abs (diff) <= 2.0f ? Severity::info : Severity::warn));
 
-        add (T ("综合响度 / 目标", "Integrated / target"),
-             valid ? num (s.integrated) + " LUFS  (" + sgn (diff) + " LU)" : noValue(), sev,
-             T ("目标 ", "Target ") + num (targetLufs) + T (" LUFS，容许 ±2 LU", " LUFS, +/- 2 LU allowed"));
+        if (valid && basis.hasComparison() && basis.mode != BasisMode::manual)
+        {
+            const float diff = s.integrated - basis.comparisonLufs();
+            const auto sev = std::abs (diff) <= 1.5f ? Severity::good : Severity::info;
+
+            add (T ("响度 / 基准差", "Loudness / basis delta"),
+                 num (s.integrated) + " LUFS  (" + sgn (diff) + " LU)", sev,
+                 basis.label() + ml::sep() + num (basis.comparisonLufs()) + " LUFS"
+                     + T ("；仅显示差异，不套用固定曲风目标", "; difference only, no fixed genre target"));
+        }
+        else if (valid && basis.mode == BasisMode::manual)
+        {
+            const float diff = s.integrated - basis.manualLufs;
+            add (T ("响度 / 手动参考", "Loudness / manual"),
+                 num (s.integrated) + " LUFS  (" + sgn (diff) + " LU)", Severity::info,
+                 T ("手动参考 ", "Manual ") + num (basis.manualLufs)
+                     + T (" LUFS；此参考不作为固定合格线", " LUFS; not a fixed pass line"));
+        }
+        else
+        {
+            const auto sev = ! valid ? Severity::info
+                           : (platform.maxLimitedDb > 0.05f ? Severity::warn
+                           : (platform.maxWastedDb > 3.0f ? Severity::info : Severity::good));
+
+            add (T ("响度 / 平台归一化", "Loudness / platform"),
+                 valid ? num (s.integrated) + " LUFS" : noValue(), sev,
+                 valid ? T ("归一化后感知不变；最坏衰减 ", "Level unchanged; worst cut ")
+                             + num (platform.maxCutDb) + T (" dB，丢弃 ", " dB, wasted ")
+                             + num (platform.maxWastedDb) + " LU" + T ("，服务限幅 ", ", service limit ")
+                             + num (platform.maxLimitedDb) + " dB"
+                       : T ("等待信号", "Waiting for signal"));
+        }
     }
 
     // 2) true peak vs ceiling (hard limit)
@@ -137,14 +164,17 @@ std::vector<CheckResult> buildChecklist (const StatsSnapshot& s,
         for (float d : bandDevs)
             worst = juce::jmax (worst, std::abs (d));
 
-        const bool valid = live && bandDevs.size() == (size_t) SpectrumAnalyzer::numBands;
+        const bool valid = live && hasTonalBasis
+                           && bandDevs.size() == (size_t) SpectrumAnalyzer::numBands;
         const auto sev = ! valid ? Severity::info
                        : (worst < 4.5f ? Severity::good
                        : (worst < 6.0f ? Severity::info : Severity::warn));
 
         add (T ("频段平衡 / 参考", "Tonal balance / reference"),
              valid ? T ("最大偏差 ", "Max deviation ") + num (worst) + " dB" : noValue(), sev,
-             T ("各频段相对参考 ≤ ±4.5 dB", "Every band within +/- 4.5 dB of the reference"));
+             valid ? T ("各频段相对参考 ≤ ±4.5 dB", "Every band within +/- 4.5 dB of the reference")
+                   : T ("未载入参考轨且专辑中位不足；频谱不设绝对目标曲线",
+                        "No reference and no album median; no absolute target curve is used"));
     }
 
     // 10-15) signal integrity (only failing layers, plus one pass summary)

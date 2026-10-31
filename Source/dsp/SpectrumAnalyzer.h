@@ -133,6 +133,10 @@ public:
     /** Energy share of the four QC bands: 20-250 Hz, 250 Hz-2 kHz, 2-8 kHz, 8-20 kHz (%). */
     const std::array<float, 4>& getBandRatios() const noexcept { return bandRatios; }
 
+    /** Absolute 10-band density (dB per octave); never used as a target curve. */
+    const std::array<float, 10>& getBandDensities() const noexcept { return bandDensities; }
+    const std::array<float, 10>& getReferenceBandDensities() const noexcept { return referenceBandDensities; }
+
     struct Resonance
     {
         float freq = 0.0f;
@@ -159,6 +163,7 @@ private:
     void computeBandRatios();
     void computeResonances();
     void updateAverageSpectrum();
+    void computeReferenceBandDensities();
     void buildDisplaySpectrum();
     void computeSmoothingWindows();
     float interpolateBins (const std::vector<float>& data, double hz) const noexcept;
@@ -186,6 +191,8 @@ private:
     std::vector<float> deviations;
     std::vector<float> referenceDb;
     std::array<float, 4> bandRatios { 0.0f, 0.0f, 0.0f, 0.0f };
+    std::array<float, 10> bandDensities {};
+    std::array<float, 10> referenceBandDensities {};
     std::vector<Resonance> resonances;
     bool referenceReady = false;
 

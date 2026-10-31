@@ -6,6 +6,10 @@ namespace
 constexpr auto targetId = "targetLufs";
 constexpr auto ceilingId = "tpCeiling";
 constexpr auto smoothingId = "smoothing";
+constexpr auto autoResetId = "autoResetOnStart";
+constexpr auto autoScanId = "autoScanOnStop";
+constexpr auto autoReportId = "autoReportOnStop";
+constexpr auto commandId = "autoCommand";
 } // namespace
 
 //==============================================================================
@@ -34,6 +38,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout MasterLensAudioProcessor::cr
         juce::ParameterID { smoothingId, 1 }, "Spectrum Smoothing",
         juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.55f));
 
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { autoResetId, 1 }, "Auto reset on transport start", false));
+
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { autoScanId, 1 }, "Auto capture album on stop", false));
+
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { autoReportId, 1 }, "Auto export proof on stop", false));
+
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { commandId, 1 }, "Automation command",
+        juce::StringArray { "None", "Reset", "Capture track", "Export proof", "Export markers", "Clear album" },
+        0));
+
     return { params.begin(), params.end() };
 }
 
@@ -45,6 +63,7 @@ void MasterLensAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     currentSampleRate = sampleRate > 0.0 ? sampleRate : 48000.0;
 
     engine.prepare (currentSampleRate, juce::jmax (1, getTotalNumInputChannels()));
+    auditionEngine.prepare (currentSampleRate, 2);
     ml::resetStats (stats);
     spectrumRing.reset();
 
@@ -74,11 +93,51 @@ void MasterLensAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     if (numSamples <= 0 || numChannels <= 0)
         return;
 
+    // Host automation: reset at transport start, queue capture / proof on stop.
+    bool playing = false;
+
+    if (auto* ph = getPlayHead())
+        if (auto pos = ph->getPosition())
+            playing = pos->getIsPlaying();
+
+    if (lastTransportPlaying < 0)
+        lastTransportPlaying = playing ? 1 : 0;
+
+    if (playing && lastTransportPlaying == 0 && getBool (autoResetId))
+        resetRequested.store (true);
+
+    if (! playing && lastTransportPlaying == 1)
+    {
+        if (getBool (autoScanId))
+            pendingUiCommand.store (2, std::memory_order_release);
+
+        if (getBool (autoReportId))
+            pendingUiCommand.store (3, std::memory_order_release);
+    }
+
+    lastTransportPlaying = playing ? 1 : 0;
+
+    if (auto* p = apvts.getRawParameterValue (commandId))
+    {
+        const int command = (int) p->load();
+
+        if (command > 0 && command != lastCommandValue)
+        {
+            if (command == 1)
+                resetRequested.store (true);
+            else
+                pendingUiCommand.store (command, std::memory_order_release);
+        }
+
+        lastCommandValue = command;
+    }
+
     if (resetRequested.exchange (false))
     {
         engine.reset();
         ml::resetStats (stats);
         spectrumRing.reset();
+        auditionEngine.reset();
     }
 
     // mono sum for the visualiser
@@ -93,6 +152,7 @@ void MasterLensAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     }
 
     engine.process (buffer, stats, numSamples);
+    auditionEngine.process (buffer);
 
     for (int ch = 2; ch < buffer.getNumChannels(); ++ch)
         buffer.clear (ch, 0, numSamples);

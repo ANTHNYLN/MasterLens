@@ -6,8 +6,9 @@ void DetailArea::paintDiagnostics (juce::Graphics& g)
 {
     auto area = contentArea().withTrimmedTop (30);
 
-    const auto checks = buildChecklist (state.stats, state.target, state.ceiling,
-                                        state.bandDevs, state.defects);
+    const auto checks = buildChecklist (state.stats, state.ceiling,
+                                        state.bandDevs, state.defects,
+                                        state.basis, state.platform, state.hasTonalBasis);
 
     int goodCount = 0, infoCount = 0, actionCount = 0;
 

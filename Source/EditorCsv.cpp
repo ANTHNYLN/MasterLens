@@ -85,10 +85,13 @@ juce::String MasterLensAudioProcessorEditor::buildReportCsv() const
         line ("reference", "deltaPlr", ml::num (stats.getPlr() - rs.getPlr()));
     }
 
-    for (const auto& c : ml::buildChecklist (stats, processor.getTargetLufs(),
+    for (const auto& c : ml::buildChecklist (stats,
                                              processor.getCeilingDb(),
-                                             analyzer.getBandDeviations(),
-                                             signalDefects))
+                                             currentBandDevs(),
+                                             signalDefects,
+                                             currentBasis(),
+                                             ml::platformSummary (stats),
+                                             analyzer.hasReference() || currentBasis().hasAlbum))
         line ("check", c.label, c.value);
 
     for (const auto& m : markers)

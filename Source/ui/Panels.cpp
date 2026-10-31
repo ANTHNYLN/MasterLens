@@ -45,9 +45,13 @@ void paintEmptyState (juce::Graphics& g, juce::Rectangle<int> area)
 }
 
 //==============================================================================
-void MetricGrid::setValues (const StatsSnapshot& s, float targetLufs, float ceilingDb, bool signal)
+void MetricGrid::setValues (const StatsSnapshot& s, const BasisContext& b,
+                            const PlatformSummary& p, float targetLufs,
+                            float ceilingDb, bool signal)
 {
     stats = s;
+    basis = b;
+    platform = p;
     target = targetLufs;
     ceiling = ceilingDb;
     hasSignal = signal;
@@ -65,16 +69,20 @@ void MetricGrid::paintCard (juce::Graphics& g, juce::Rectangle<int> area, const 
     g.setColour (theme::border);
     g.drawRoundedRectangle (r, tokens::radiusCard, 1.0f);
 
+    const auto pillFont = uiFont (tokens::unit);
+    const int pillWidth = pill.isNotEmpty()
+                              ? juce::roundToInt (juce::GlyphArrangement::getStringWidth (pillFont, pill)) + 14
+                              : 0;
+
     g.setColour (theme::textDim);
     g.setFont (uiFont (tokens::label));
-    g.drawText (title, area.getX() + 12, area.getY() + 8, area.getWidth() - 24, 16,
-                juce::Justification::centredLeft);
+    g.drawFittedText (title, area.getX() + 12, area.getY() + 8,
+                      juce::jmax (20, area.getWidth() - 24 - (pillWidth > 0 ? pillWidth + 8 : 0)), 16,
+                      juce::Justification::centredLeft, 1);
 
     if (pill.isNotEmpty())
     {
-        const auto pillFont = uiFont (tokens::unit);
-        const int pw = juce::roundToInt (juce::GlyphArrangement::getStringWidth (pillFont, pill)) + 14;
-        auto pr = juce::Rectangle<int> (area.getRight() - 12 - pw, area.getY() + 8, pw, 18);
+        auto pr = juce::Rectangle<int> (area.getRight() - 12 - pillWidth, area.getY() + 8, pillWidth, 18);
 
         g.setColour (colour.withAlpha (0.14f));
         g.fillRoundedRectangle (pr.toFloat(), 9.0f);
@@ -126,19 +134,43 @@ void MetricGrid::paint (juce::Graphics& g)
     const auto noReading = noValue();
     const bool live = hasSignal;
 
-    // --- integrated loudness --------------------------------------------------
+    // --- integrated loudness / basis consequence ------------------------------
     {
         const bool valid = live && stats.integrated > -70.0f;
-        const float diff = stats.integrated - target;
-        const auto colour = ! valid ? theme::textFaint
-                          : (std::abs (diff) <= 1.0f ? theme::good
-                          : (std::abs (diff) <= 2.0f ? theme::info : theme::warn));
+        juce::String pill, hint;
+        auto colour = theme::textFaint;
 
-        paintCard (g, cell (0, 0), T ("综合响度", "INTEGRATED"),
-                   valid ? num (stats.integrated) : noReading, "LUFS",
-                   valid ? T ("目标 ", "Target ") + num (target) + " LUFS"
-                         : T ("等待信号", "Waiting for signal"),
-                   valid ? sgn (diff) + " LU" : juce::String(), colour);
+        if (! valid)
+        {
+            hint = T ("等待信号", "Waiting for signal");
+        }
+        else if (basis.hasComparison() && basis.mode != BasisMode::manual)
+        {
+            const float diff = stats.integrated - basis.comparisonLufs();
+            pill = T ("Δ ", "Δ ") + sgn (diff, 1) + " LU";
+            hint = basis.label() + ml::sep() + num (basis.comparisonLufs()) + " LUFS";
+            colour = std::abs (diff) <= 1.5f ? theme::good : theme::info;
+        }
+        else if (basis.mode == BasisMode::manual)
+        {
+            const float diff = stats.integrated - basis.manualLufs;
+            pill = T ("Δ ", "Δ ") + sgn (diff, 1) + " LU";
+            hint = T ("手动参考 ", "Manual ") + num (basis.manualLufs) + " LUFS";
+            colour = theme::info;
+        }
+        else
+        {
+            pill = (platform.maxCutDb > 0.05f ? T ("衰减 ", "cut ") : T ("提升 ", "boost "))
+                 + num (platform.maxCutDb > 0.05f ? platform.maxCutDb : platform.maxBoostDb) + " dB";
+            hint = T ("归一化后 −14 · 丢弃 ", "normalised −14 · wasted ")
+                 + num (platform.maxWastedDb) + " LU · "
+                 + T ("限幅 ", "limit ") + num (platform.maxLimitedDb) + " dB";
+            colour = platform.maxLimitedDb > 0.05f ? theme::warn
+                   : (platform.maxWastedDb > 3.0f ? theme::info : theme::good);
+        }
+
+        paintCard (g, cell (0, 0), T ("综合响度 / 平台后果", "INTEGRATED / PLATFORM"),
+                   valid ? num (stats.integrated) : noReading, "LUFS", hint, pill, colour);
     }
 
     // --- true peak ------------------------------------------------------------

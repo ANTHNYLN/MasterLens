@@ -8,9 +8,10 @@ using ml::T;
 juce::String MasterLensAudioProcessorEditor::buildReport() const
 {
     juce::String r;
-    const float target = processor.getTargetLufs();
     const float ceiling = processor.getCeilingDb();
     const auto& s = stats;
+    const auto basis = currentBasis();
+    const auto platform = ml::platformSummary (s);
 
     r << "MasterLens " << ml::kVersion << " by " << ml::kOrganisation
       << T (" · 母带交付检查报告\n", " - mastering QC report\n");
@@ -19,8 +20,16 @@ juce::String MasterLensAudioProcessorEditor::buildReport() const
       << T ("声道：", "Channels: ") << (s.stereo ? T ("立体声", "stereo") : T ("单声道", "mono")) << "\n\n";
 
     r << T ("【响度与动态】\n", "[Loudness & dynamics]\n");
-    r << "  I            : " << ml::fmtDb (s.integrated) << " LUFS"
-      << T ("（目标 ", " (target ") << ml::num (target) << " LUFS)\n";
+    r << "  I            : " << ml::fmtDb (s.integrated) << " LUFS";
+
+    if (basis.hasComparison() && basis.mode != ml::BasisMode::manual)
+        r << T ("（基准 ", " (basis ") << basis.label() << "  "
+             << ml::sgn (s.integrated - basis.comparisonLufs(), 1) << " LU)\n";
+    else
+        r << T ("（平台归一化：最坏衰减 ", " (platform: worst cut ")
+             << ml::fmt1 (platform.maxCutDb) << T (" dB，丢弃 ", " dB, wasted ")
+             << ml::fmt1 (platform.maxWastedDb) << " LU)\n";
+
     r << "  S / M        : " << ml::fmtDb (s.shortTerm) << " / " << ml::fmtDb (s.momentary) << " LUFS\n";
     r << "  LRA / PLR    : " << ml::fmt1 (s.lra) << " LU / " << ml::fmt1 (s.getPlr()) << " dB\n";
     r << "  PSR (min)    : " << ml::fmtDb (s.psr) << " / " << ml::fmtDb (s.psrMin) << " dB"
@@ -115,6 +124,30 @@ juce::String MasterLensAudioProcessorEditor::buildReport() const
                                : i.severity == ml::Severity::info ? T ("可优化", "Improve")
                                                                   : T ("良好", "Good");
         r << "  [" << tag << "] " << i.title << "\n    " << i.detail << "\n";
+    }
+
+    r << "\n" << T ("【专辑统一 / 交付门禁】\n", "[Album consistency / release gate]\n");
+    r << T ("  专辑：", "  Album: ") << albumSnapshot.albumName
+      << T ("  rev ", "  rev ") << albumSnapshot.revision
+      << T ("  曲目 ", "  tracks ") << (int) albumSnapshot.tracks.size() << "\n";
+    r << T ("  门禁：", "  Gate: ")
+      << (albumGate.blocked ? T ("阻断", "BLOCKED")
+                            : (albumGate.incomplete ? T ("未采集", "INCOMPLETE") : T ("放行", "PASS")))
+      << T ("  阻断项 ", "  blockers ") << albumGate.blockers << "\n";
+
+    for (const auto& reason : albumGate.reasons)
+        r << "    - " << reason << "\n";
+
+    if (! albumSnapshot.tracks.empty())
+    {
+        for (const auto& t : albumSnapshot.tracks)
+            r << "    " << t.label << "  " << ml::fmtDb (t.stats.integrated) << " LUFS  "
+              << ml::fmt1 (t.stats.lra) << " LU  " << ml::fmt1 (t.stats.getPlr()) << " PLR  "
+              << ml::fmtDb (t.stats.truePeakDb) << " dBTP\n";
+
+        r << T ("  与上版：新增 ", "  vs previous: new ") << albumDiff.added
+          << T ("，恶化 ", ", worse ") << albumDiff.worsened
+          << T ("，改善 ", ", better ") << albumDiff.improved << "\n";
     }
 
     r << "\n" << T ("开发者 ", "Developer ") << ml::kDeveloper

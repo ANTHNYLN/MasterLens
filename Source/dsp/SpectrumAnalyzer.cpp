@@ -96,6 +96,11 @@ void SpectrumAnalyzer::reset()
     std::fill (deviations.begin(), deviations.end(), 0.0f);
     resonances.clear();
     bandRatios = { 0.0f, 0.0f, 0.0f, 0.0f };
+    bandDensities.fill (-100.0f);
+
+    if (! referenceReady)
+        referenceBandDensities.fill (-100.0f);
+
     averagedFrames = 0;
     resonanceFrameCounter = 0;
     framePeakDb = kSilentDb;
@@ -334,12 +339,45 @@ void SpectrumAnalyzer::setReferenceSpectrum (std::vector<float> refDb)
 
     referenceDb = std::move (refDb);
     referenceReady = true;
+    computeReferenceBandDensities();
+}
+
+void SpectrumAnalyzer::computeReferenceBandDensities()
+{
+    for (int b = 0; b < numBands; ++b)
+    {
+        const auto& info = bandTable[b];
+        double power = 0.0;
+        int bins = 0;
+
+        for (int k = 1; k < numBins; ++k)
+        {
+            const double f = (double) k * binHz;
+
+            if (f >= (double) info.lo && f < (double) info.hi)
+            {
+                power += std::pow (10.0, (double) referenceDb[(size_t) k] * 0.1);
+                ++bins;
+            }
+        }
+
+        if (bins == 0 || power <= 1.0e-20)
+        {
+            referenceBandDensities[(size_t) b] = -100.0f;
+            continue;
+        }
+
+        const double octaves = std::log2 ((double) info.hi / (double) info.lo);
+        referenceBandDensities[(size_t) b] = (float) (10.0 * std::log10 (power)
+                                                        - 10.0 * std::log10 (octaves));
+    }
 }
 
 void SpectrumAnalyzer::clearReference()
 {
     referenceReady = false;
     std::fill (referenceDb.begin(), referenceDb.end(), 0.0f);
+    referenceBandDensities.fill (-100.0f);
 }
 
 void SpectrumAnalyzer::computeBandRatios()
@@ -486,11 +524,41 @@ void SpectrumAnalyzer::computeBandDeviations()
     const float mean = sum / (float) valid;
 
     for (int b = 0; b < numBands; ++b)
+        bandDensities[(size_t) b] = bins[b] > 0 ? density[b] : -100.0f;
+
+    // Without a reference or album basis there is deliberately no target curve,
+    // so the deviation decays to zero instead of comparing against pink noise.
+    float refMean = 0.0f;
+    int refValid = 0;
+
+    if (referenceReady)
+    {
+        float refSum = 0.0f;
+
+        for (int b = 0; b < numBands; ++b)
+        {
+            if (referenceBandDensities[(size_t) b] > -99.0f)
+            {
+                refSum += referenceBandDensities[(size_t) b];
+                ++refValid;
+            }
+        }
+
+        if (refValid > 0)
+            refMean = refSum / (float) refValid;
+    }
+
+    for (int b = 0; b < numBands; ++b)
     {
         if (density[b] == 0.0f)
             continue;
 
-        const float target = density[b] - mean;
+        float target = 0.0f;
+
+        if (referenceReady && refValid > 0 && referenceBandDensities[(size_t) b] > -99.0f)
+            target = (density[b] - mean)
+                   - (referenceBandDensities[(size_t) b] - refMean);
+
         deviations[(size_t) b] += (target - deviations[(size_t) b]) * 0.15f;
     }
 }

@@ -51,6 +51,15 @@ MasterLensAudioProcessorEditor::MasterLensAudioProcessorEditor (MasterLensAudioP
     detail.onExportReport    = [this] { exportReport(); };
     detail.onAddMarkerNow    = [this] { addManualMarker (stats.elapsed); };
     detail.onAddMarkerAt     = [this] (double t) { addManualMarker (t); };
+    detail.onExportMarkers   = [this] { exportMarkers(); };
+    detail.onImportMarkers   = [this] { importMarkers(); };
+    detail.onAlbumCapture    = [this] { captureAlbum(); };
+    detail.onAlbumExportProof= [this] { exportAlbumProof(); };
+    detail.onAlbumImport     = [this] { importAlbumSnapshot(); };
+    detail.onAlbumClear      = [this] { clearAlbum(); };
+    detail.onAlbumRuleChanged= [this] (int i, bool on) { setAlbumRule (i, on); };
+    detail.onAuditionSignal  = [this] (int i) { auditionSignal (i); };
+    detail.onAuditionRiskDetail = [this] (const juce::String& d) { auditionRiskDetail (d); };
     timeline.onDoubleClick   = [this] (double t) { addManualMarker (t); };
 
     buildControls();
@@ -85,6 +94,8 @@ MasterLensAudioProcessorEditor::MasterLensAudioProcessorEditor (MasterLensAudioP
 
     const int storedLanguage = (int) processor.apvts.state.getProperty ("language", 0);
     ml::Localisation::set (storedLanguage == 1 ? ml::Language::english : ml::Language::chinese);
+    basisMode = (ml::BasisMode) juce::jlimit (0, 3,
+        (int) processor.apvts.state.getProperty ("basisMode", 0));
 
     const int storedW = (int) processor.apvts.state.getProperty ("editorWidth", 1180);
     const int storedH = (int) processor.apvts.state.getProperty ("editorHeight", 760);
@@ -100,6 +111,7 @@ MasterLensAudioProcessorEditor::MasterLensAudioProcessorEditor (MasterLensAudioP
     updateTexts();
     syncPresetToParameters();
     updateSnapshotChips();
+    refreshAlbum();
 
     analyzerSampleRate = processor.getSampleRateValue();
     analyzer.prepare (analyzerSampleRate, 13);
@@ -114,7 +126,7 @@ MasterLensAudioProcessorEditor::MasterLensAudioProcessorEditor (MasterLensAudioP
     }
 
     attachShortcutListener (*this);
-    startTimerHz (30);
+    startTimerHz (60);
 }
 
 MasterLensAudioProcessorEditor::~MasterLensAudioProcessorEditor()
